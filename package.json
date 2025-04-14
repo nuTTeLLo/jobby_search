@@ -1,0 +1,33 @@
+{
+  "name": "jobspy-mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server for JobSpy",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "jobspy",
+    "jobs",
+    "search",
+    "llm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "@rekog/mcp-nest": "1.4.0-beta.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "joi": "^17.13.3",
+    "winston": "^3.10.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
