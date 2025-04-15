@@ -65,7 +65,7 @@ class SseManager {
    */
   async notificationProgress(message, sessionId) {
     const clients = Object.values(this.transports);
-    if (clients.length === 0) return;
+    if (clients.length === 0) {return;}
     await this.mcpServer.server.notification({
       method: 'notifications/progress',
       params: {
@@ -81,6 +81,51 @@ class SseManager {
    */
   hasConnection(sessionId) {
     return this.transports[sessionId];
+  }
+
+  /**
+   * Process a stream event from a model
+   * @param {Object} event - The event to process
+   * @param {string} connectionId - The connection ID
+   * @param {string} toolCallId - The tool call ID
+   */
+  handleStreamEvent(event, connectionId, toolCallId) {
+    if (!event || !event.choices || !event.choices[0]) {
+      return;
+    }
+
+    const delta = event.choices[0].delta;
+    if (delta && delta.tool_calls && delta.tool_calls[0]) {
+      const toolCall = delta.tool_calls[0];
+      
+      // Store or update the tool call in our cache
+      if (!this.toolCalls[connectionId]) {
+        this.toolCalls[connectionId] = {};
+      }
+      
+      if (!this.toolCalls[connectionId][toolCallId]) {
+        this.toolCalls[connectionId][toolCallId] = {
+          function: {
+            name: '',
+            arguments: '',
+          },
+          index: toolCall.index,
+          id: toolCallId,
+        };
+      }
+
+      const currentToolCall = this.toolCalls[connectionId][toolCallId];
+
+      if (toolCall.function) {
+        if (toolCall.function.name) {
+          currentToolCall.function.name = toolCall.function.name;
+        }
+        
+        if (toolCall.function.arguments) {
+          currentToolCall.function.arguments += toolCall.function.arguments;
+        }
+      }
+    }
   }
 }
 

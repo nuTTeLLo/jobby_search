@@ -1,83 +1,69 @@
-// Simple configurable logger for the JobSpy MCP server
+import winston from 'winston';
 
-/**
- * Log levels in order of verbosity
- * @type {Object}
- */
-const LOG_LEVELS = {
+// Define log levels and colors
+const levels = {
   error: 0,
   warn: 1,
   info: 2,
-  debug: 3
+  debug: 3,
 };
 
-// Get log level from environment or default to 'warn'
-const currentLevel = process.env.LOG_LEVEL || 'warn';
-const currentLevelValue = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.warn;
-
-/**
- * Format a log message with timestamp and level
- * @param {string} level - Log level
- * @param {string} message - Log message
- * @param {object} [metadata] - Additional metadata to log
- * @returns {string} Formatted log message
- */
-function formatLogMessage(level, message, metadata = {}) {
-  const timestamp = new Date().toISOString();
-  const metadataStr = Object.keys(metadata).length > 0 
-    ? ` ${JSON.stringify(metadata)}`
-    : '';
-  
-  return `${timestamp} [${level.toUpperCase()}] ${message}${metadataStr}`;
-}
-
-/**
- * Logger object with methods for each log level
- */
-const logger = {
-  /**
-   * Log error message
-   * @param {string} message - Message to log
-   * @param {object} [metadata] - Additional metadata
-   */
-  error(message, metadata) {
-    if (currentLevelValue >= LOG_LEVELS.error) {
-      console.error(formatLogMessage('error', message, metadata));
-    }
-  },
-  
-  /**
-   * Log warning message
-   * @param {string} message - Message to log
-   * @param {object} [metadata] - Additional metadata
-   */
-  warn(message, metadata) {
-    if (currentLevelValue >= LOG_LEVELS.warn) {
-      console.error(formatLogMessage('warn', message, metadata));
-    }
-  },
-  
-  /**
-   * Log info message
-   * @param {string} message - Message to log
-   * @param {object} [metadata] - Additional metadata
-   */
-  info(message, metadata) {
-    if (currentLevelValue >= LOG_LEVELS.info) {
-      console.error(formatLogMessage('info', message, metadata));
-    }
-  },
-  
-  /**
-   * Log debug message
-   * @param {string} message - Message to log
-   * @param {object} [metadata] - Additional metadata
-   */
-  debug(message, metadata) {
-    if (currentLevelValue >= LOG_LEVELS.debug) {
-      console.error(formatLogMessage('debug', message, metadata));
-    }
-  }
+const colors = {
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  debug: 'blue',
 };
 
-export default logger;
+// Create the Winston logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  levels,
+  format: winston.format.combine(
+    winston.format.timestamp({
+      format: 'YYYY-MM-DD HH:mm:ss',
+    }),
+    winston.format.errors({ stack: true }),
+    winston.format.splat(),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'jobspy-mcp-server' },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize({ all: true }),
+        winston.format.printf(
+          (info) => `${info.timestamp} ${info.level}: ${info.message}`
+        )
+      ),
+    }),
+  ],
+});
+
+// Add colors to the logger
+winston.addColors(colors);
+
+// Export custom log method that handles objects better
+const customLogger = {
+  error: (message, meta = {}) => {
+    logger.error(message, { meta });
+  },
+  warn: (message, meta = {}) => {
+    logger.warn(message, { meta });
+  },
+  info: (message, meta = {}) => {
+    logger.info(message, { meta });
+  },
+  debug: (message, meta = {}) => {
+    logger.debug(message, { meta });
+  },
+  // Provide direct access to the Winston logger level
+  get level() {
+    return logger.level;
+  },
+  set level(newLevel) {
+    logger.level = newLevel;
+  },
+};
+
+export default customLogger;

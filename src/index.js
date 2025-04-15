@@ -2,10 +2,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import express from 'express';
 import cors from 'cors';
-import { z } from 'zod';
-import { searchJobsHandler } from './handlers.js';
 import logger from './logger.js';
 import SseManager from './sseManager.js';
+import {
+  searchJobsPrompt,
+  jobRecommendationsPrompt,
+  resumeFeedbackPrompt,
+} from './prompts/index.js';
+import { searchJobsHandler, processJobSearchResults } from './handlers.js';
+import { searchJobsTool } from './tools/search-jobs.js';
 
 // Environment configuration
 const PORT = process.env.JOBSPY_PORT || 9423;
@@ -22,124 +27,34 @@ const server = new McpServer({
 
 const sseManager = new SseManager(server);
 
-// Define tools for the MCP server
+// Register prompts
+server.prompt(
+  searchJobsPrompt.name,
+  searchJobsPrompt.description,
+  searchJobsPrompt.schema,
+  searchJobsPrompt.messageBuilder,
+);
+
+server.prompt(
+  jobRecommendationsPrompt.name,
+  jobRecommendationsPrompt.description,
+  jobRecommendationsPrompt.schema,
+  jobRecommendationsPrompt.messageBuilder,
+);
+
+server.prompt(
+  resumeFeedbackPrompt.name,
+  resumeFeedbackPrompt.description,
+  resumeFeedbackPrompt.schema,
+  resumeFeedbackPrompt.messageBuilder,
+);
+
+// Register the search jobs tool
 server.tool(
-  'search_jobs',
-  'Search for jobs across various job listing websites',
-  {
-    site_names: z
-      .string()
-      .describe(
-        'Comma-separated list of job sites to search. Options: indeed,linkedin,zip_recruiter,glassdoor,google,bayt,naukri'
-      )
-      .default('indeed'),
-    search_term: z
-      .string()
-      .describe('Search term for jobs')
-      .default('software engineer'),
-    location: z
-      .string()
-      .describe('Location for job search')
-      .default('San Francisco, CA'),
-    google_search_term: z
-      .string()
-      .nullable()
-      .describe('Google specific search term')
-      .default(null),
-    results_wanted: z
-      .number()
-      .int()
-      .describe('Number of results wanted')
-      .default(20),
-    hours_old: z
-      .number()
-      .int()
-      .describe('How many hours old the jobs can be')
-      .default(72),
-    country_indeed: z
-      .string()
-      .describe('Country for Indeed search')
-      .default('USA'),
-    linkedin_fetch_description: z
-      .boolean()
-      .describe('Whether to fetch LinkedIn job descriptions (slower)')
-      .default(false),
-    proxies: z
-      .string()
-      .nullable()
-      .describe('Comma-separated list of proxies')
-      .default(null),
-    format: z.enum(['json', 'csv']).describe('Output format').default('json'),
-  },
-  async (params, extra) => {
-    let progressInterval;
-    try {
-      logger.info('Received search_jobs request', { params, extra });
-
-      // Track progress for SSE clients
-      if (sseManager.hasConnection(extra.sessionId)) {
-        let progress = 0;
-        progressInterval = setInterval(() => {
-          progress += 5;
-          if (progress > 90) {
-            progress = 90; // Cap at 90% until complete
-          }
-
-          // Send progress to all connected clients
-          sseManager.notificationProgress(
-            {
-              type: 'progress',
-              tool: 'search_jobs',
-              progress,
-              message: `Searching for jobs (${progress}%)...`,
-            },
-            extra.sessionId
-          );
-        }, 2000);
-      }
-
-      // Execute job search
-      const result = searchJobsHandler(params);
-
-      // Clean up progress interval
-      if (progressInterval) {
-        clearInterval(progressInterval);
-
-        // Send 100% progress update to all connected clients
-        if (sseManager.hasConnection(extra.sessionId)) {
-          sseManager.notificationProgress(
-            {
-              type: 'progress',
-              tool: 'search_jobs',
-              progress: 100,
-              message: 'Job search completed',
-            },
-            extra.sessionId
-          );
-        }
-      }
-
-      return {
-        isError: false,
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      clearInterval(progressInterval);
-      logger.error('Error in search_jobs handler', { error: error.message });
-      return {
-        isError: true,
-        error: {
-          message: error.message,
-          code: 'INTERNAL_SERVER_ERROR',
-        },
-      };
-    }
-  }
+  searchJobsTool.name,
+  searchJobsTool.description,
+  searchJobsTool.schema,
+  searchJobsTool.callback,
 );
 
 // Initialize transports
@@ -210,7 +125,7 @@ async function runServer() {
 
         logger.info(`SSE transport listening at http://${HOST}:${PORT}/sse`);
         logger.info(
-          `Send endpoint available at http://${HOST}:${PORT}/messages`
+          `Send endpoint available at http://${HOST}:${PORT}/messages`,
         );
       } catch (error) {
         logger.error('Failed to connect SSE transport', {
@@ -240,8 +155,8 @@ async function runServer() {
 
     logger.info(
       `Server successfully connected with transports: ${connectedTransports.join(
-        ', '
-      )}`
+        ', ',
+      )}`,
     );
   } catch (error) {
     logger.error('Server connection error', {
