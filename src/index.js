@@ -7,11 +7,10 @@ import { searchJobsHandler } from './handlers.js';
 import logger from './logger.js';
 import SseManager from './sseManager.js';
 
-
 // Environment configuration
 const PORT = process.env.JOBSPY_PORT || 9423;
 const HOST = process.env.JOBSPY_HOST || '0.0.0.0';
-const ENABLE_SSE = !!(process.env.ENABLE_SSE|0);
+const ENABLE_SSE = !!(process.env.ENABLE_SSE | 0);
 
 // Create the MCP server
 const server = new McpServer({
@@ -100,7 +99,7 @@ server.tool(
       }
 
       // Execute job search
-      const result = await searchJobsHandler(params);
+      const result = searchJobsHandler(params);
 
       // Clean up progress interval
       if (progressInterval) {
@@ -120,7 +119,15 @@ server.tool(
         }
       }
 
-      return result;
+      return {
+        isError: false,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
     } catch (error) {
       clearInterval(progressInterval);
       logger.error('Error in search_jobs handler', { error: error.message });
@@ -190,8 +197,8 @@ async function runServer() {
         });
 
         app.post('/api', async (req, res) => {
-            const data = searchJobsHandler(req.body);
-            res.json(data).sendStatus(200);
+          const data = searchJobsHandler(req.body);
+          res.json(data);
         });
 
         // Start the Express server

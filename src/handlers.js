@@ -21,26 +21,29 @@ import logger from './logger.js';
  * @param {JobSearchParams} params - Search parameters
  * @returns {Promise<object>} Search results
  */
-export async function searchJobsHandler(params) {
+export function searchJobsHandler(params) {
   let result;
   try {
     logger.info('Starting job search with parameters', { params });
-    
+
     const args = buildCommandArgs(params);
     const cmd = `docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
-    
+
     result = execSync(cmd).toString();
     const data = JSON.parse(result);
-    
+
     logger.info(`Found jobs: ${data.length}`);
     return {
-      jobs: data,
       count: data.length || 0,
-      message: 'Job search completed successfully'
+      message: 'Job search completed successfully',
+      jobs: data,
     };
   } catch (error) {
-    logger.error('Error in searchJobsHandler', { error: error.message, result });
+    logger.error('Error in searchJobsHandler', {
+      error: error.message,
+      result,
+    });
     throw error;
   }
 }
@@ -52,17 +55,21 @@ export async function searchJobsHandler(params) {
  */
 function buildCommandArgs(params) {
   const args = [];
-  
+
   // Add each parameter as a command line argument
   if (params.site_name) args.push('--site_names', `"${params.site_names}"`);
   if (params.search_term) args.push('--search_term', `"${params.search_term}"`);
   if (params.location) args.push('--location', `"${params.location}"`);
-  if (params.google_search_term) args.push('--google_search_term', `"${params.google_search_term}"`);
-  if (params.results_wanted) args.push('--results_wanted', `"${params.results_wanted}"`);
+  if (params.google_search_term)
+    args.push('--google_search_term', `"${params.google_search_term}"`);
+  if (params.results_wanted)
+    args.push('--results_wanted', `"${params.results_wanted}"`);
   if (params.hours_old) args.push('--hours_old', `"${params.hours_old}"`);
-  if (params.country_indeed) args.push('--country_indeed', `"${params.country_indeed}"`);
-  if (!!params.linkedin_fetch_description) args.push('--linkedin_fetch_description');
+  if (params.country_indeed)
+    args.push('--country_indeed', `"${params.country_indeed}"`);
+  if (!!params.linkedin_fetch_description)
+    args.push('--linkedin_fetch_description');
   if (params.proxies) args.push('--proxies', `"${params.proxies}"`);
-  args.push('--format', 'json');  
+  args.push('--format', 'json');
   return args;
 }
