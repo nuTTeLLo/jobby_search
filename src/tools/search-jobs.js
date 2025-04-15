@@ -1,6 +1,6 @@
 import logger from '../logger.js';
-import { searchJobsHandler } from '../handlers.js';
 import { searchParams } from '../schemas/searchParamsSchema.js';
+import { execSync } from 'child_process';
 
 /**
  * @typedef {Object} JobSearchParams
@@ -16,17 +16,17 @@ import { searchParams } from '../schemas/searchParamsSchema.js';
  * @property {'json'|'csv'} [format] - Output format: JSON or CSV
  */
 
-export const searchJobsTool = {
-  name: 'search_jobs',
-  description: 'Search for jobs across various job listing websites',
-  schema: searchParams,
-  callback: async (params, extra) => {
+export const searchJobsTool = (server, sseManager) => server.tool(
+  'search_jobs',
+  'Search for jobs across various job listing websites',
+  searchParams,
+  async (params, extra) => {
     let progressInterval;
     try {
       logger.info('Received search_jobs request', { params, extra });
 
       // Track progress for SSE clients
-      if (sseManager && sseManager.hasConnection(extra.sessionId)) {
+      if (extra.sessionId && sseManager.hasConnection(extra.sessionId)) {
         let progress = 0;
         progressInterval = setInterval(() => {
           progress += 5;
@@ -55,7 +55,7 @@ export const searchJobsTool = {
         clearInterval(progressInterval);
 
         // Send 100% progress update to all connected clients
-        if (sseManager && sseManager.hasConnection(extra.sessionId)) {
+        if (extra.sessionId && sseManager.hasConnection(extra.sessionId)) {
           sseManager.notificationProgress(
             {
               type: 'progress',
@@ -91,4 +91,76 @@ export const searchJobsTool = {
       };
     }
   },
-};
+);
+
+/**
+ * Handler for the search_jobs MCP tool
+ * @param {JobSearchParams} params - Search parameters
+ * @returns {Promise<object>} Search results
+ */
+export function searchJobsHandler(params) {
+  let result;
+  try {
+    logger.info('Starting job search with parameters', { params });
+
+    const args = buildCommandArgs(params);
+    const cmd = `docker run jobspy ${args.join(' ')}`;
+    logger.info(`Spawning process with args: ${cmd}`);
+
+    result = execSync(cmd).toString();
+    const data = JSON.parse(result);
+
+    logger.info(`Found jobs: ${data.length}`);
+    return {
+      count: data.length || 0,
+      message: 'Job search completed successfully',
+      jobs: data,
+    };
+  } catch (error) {
+    logger.error('Error in searchJobsHandler', {
+      error: error.message,
+      result,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Build command arguments from parameters
+ * @param {JobSearchParams} params - Search parameters
+ * @returns {string[]} Command line arguments
+ */
+function buildCommandArgs(params) {
+  const args = [];
+
+  // Add each parameter as a command line argument
+  if (params.siteNames) {
+    args.push('--site_name', `"${params.siteNames}"`);
+  }
+  if (params.searchTerm) {
+    args.push('--search_term', `"${params.searchTerm}"`);
+  }
+  if (params.location) {
+    args.push('--location', `"${params.location}"`);
+  }
+  if (params.googleSearchTerm) {
+    args.push('--google_search_term', `"${params.googleSearchTerm}"`);
+  }
+  if (params.resultsWanted) {
+    args.push('--results_wanted', `"${params.resultsWanted}"`);
+  }
+  if (params.hoursOld) {
+    args.push('--hours_old', `"${params.hoursOld}"`);
+  }
+  if (params.countryIndeed) {
+    args.push('--country_indeed', `"${params.countryIndeed}"`);
+  }
+  if (!!params.linkedinFetchDescription) {
+    args.push('--linkedin_fetch_description');
+  }
+  if (params.proxies) {
+    args.push('--proxies', `"${params.proxies}"`);
+  }
+  args.push('--format', 'json');
+  return args;
+}

@@ -16,7 +16,15 @@ class SseManager {
    */
   mcpServer;
 
+  /**
+   * Storage for progress tokens by sessionId
+   */
   progressTokens = {};
+
+  /**
+   * Storage for tool calls by connectionId and toolCallId
+   */
+  toolCalls = {};
 
   constructor(server) {
     this.mcpServer = server;

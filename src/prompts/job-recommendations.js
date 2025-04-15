@@ -16,10 +16,20 @@ export const jobRecommendationsSchema = z.object({
     .describe('The type of job the seeker is looking for (e.g., full-time, part-time, contract, internship)'),
 });
 
+
 /**
- * Prompt template for job recommendations
+ * Complete job recommendations prompt definition for MCP server
  */
-export const jobRecommendationsPrompt = `
+export const jobRecommendationsPrompt = (server) => server.prompt(
+  'job_recommendations',
+  'Get personalized job recommendations based on skills and preferences',
+  jobRecommendationsSchema,
+  (inputs) => {
+    return {
+      messages: [
+        {
+          role: 'system',
+          content: `
 You are a career advisor specializing in helping job seekers find relevant job opportunities based on their skills and preferences.
 Given the information about a job seeker and a list of job postings, recommend the most suitable jobs for them.
 
@@ -27,26 +37,11 @@ For each recommended job, explain why it's a good match based on the person's sk
 Focus on highlighting the alignment between the job requirements and the candidate's profile.
 
 Keep in mind that the job recommendations should be practical and actionable, allowing the job seeker to apply for roles where they have a good chance of success.
-`;
-
-/**
- * System message for job recommendations
- */
-export const jobRecommendationsSystemMessage = {
-  role: 'system',
-  content: jobRecommendationsPrompt,
-};
-
-/**
- * Create job recommendations request
- */
-export const createJobRecommendationsRequest = (inputs) => {
-  return {
-    messages: [
-      jobRecommendationsSystemMessage,
-      {
-        role: 'user',
-        content: `
+`,
+        },
+        {
+          role: 'user',
+          content: `
 Job Seeker Profile:
 - Skills: ${inputs.skills}
 - Experience Level: ${inputs.experienceLevel}
@@ -58,7 +53,8 @@ Please recommend relevant job opportunities from the list below, explaining why 
 
 {{jobListings}}
         `,
-      },
-    ],
-  };
-};
+        },
+      ],
+    };
+  },
+);

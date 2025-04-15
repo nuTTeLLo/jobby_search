@@ -1,6 +1,6 @@
 /**
  * Export all prompt configurations
  */
-export { searchJobsPrompt } from './search-jobs.js';
-export { jobRecommendationsPrompt } from './job-recommendations.js';
-export { resumeFeedbackPrompt } from './resume-feedback.js';
+export * from './search-jobs.js';
+export * from './job-recommendations.js';
+export * from './resume-feedback.js';

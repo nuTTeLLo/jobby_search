@@ -1,46 +1,34 @@
-/* eslint-disable max-len */
 import { z } from 'zod';
 
 /**
- * Resume Feedback Schema - Parameters for resume feedback generation
+ * Complete resume feedback prompt definition for MCP server
  */
-export const resumeFeedbackSchema = z.object({
-  resumeText: z.string()
-    .describe('The full text of the resume to analyze'),
-  targetRole: z.string()
-    .describe('The specific job role the resume is targeting'),
-  targetIndustry: z.string()
-    .describe('The industry the job seeker is targeting'),
-  experienceLevel: z.string()
-    .describe('The experience level of the job seeker (e.g., entry-level, mid-level, senior)'),
-});
-
-/**
- * Prompt template for resume feedback
- */
-export const resumeFeedbackPrompt = `
+export const resumeFeedbackPrompt = server => server.prompt(
+  'resume_feedback',
+  'Get professional feedback on your resume for specific roles and industries',
+  z.object({
+    resumeText: z.string()
+      .describe('The full text of the resume to analyze'),
+    targetRole: z.string()
+      .describe('The specific job role the resume is targeting'),
+    targetIndustry: z.string()
+      .describe('The industry the job seeker is targeting'),
+    experienceLevel: z.string()
+      .describe('The experience level of the job seeker (e.g., entry-level, mid-level, senior)'),
+  }),
+  (inputs) => {
+    return {
+      messages: [
+        {
+          role: 'system',
+          content: `
 You are a professional resume reviewer with expertise in helping job seekers improve their resumes for specific roles and industries.
 Provide comprehensive and constructive feedback on the resume text provided.
-`;
-
-/**
- * System message for resume feedback
- */
-export const resumeFeedbackSystemMessage = {
-  role: 'system',
-  content: resumeFeedbackPrompt,
-};
-
-/**
- * Create resume feedback request
- */
-export const createResumeFeedbackRequest = (inputs) => {
-  return {
-    messages: [
-      resumeFeedbackSystemMessage,
-      {
-        role: 'user',
-        content: `
+`,
+        },
+        {
+          role: 'user',
+          content: `
 Please review the following resume for a ${inputs.experienceLevel} professional targeting a ${inputs.targetRole} position in the ${inputs.targetIndustry} industry.
 Provide specific, actionable feedback in these categories:
 1. Overall impression and effectiveness
@@ -52,8 +40,9 @@ Provide specific, actionable feedback in these categories:
 
 Resume:
 ${inputs.resumeText}
-        `,
-      },
-    ],
-  };
-};
+          `,
+        },
+      ],
+    };
+  },
+);

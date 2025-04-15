@@ -9,8 +9,7 @@ import {
   jobRecommendationsPrompt,
   resumeFeedbackPrompt,
 } from './prompts/index.js';
-import { searchJobsHandler, processJobSearchResults } from './handlers.js';
-import { searchJobsTool } from './tools/search-jobs.js';
+import { searchJobsTool, searchJobsHandler } from './tools/index.js';
 
 // Environment configuration
 const PORT = process.env.JOBSPY_PORT || 9423;
@@ -27,35 +26,10 @@ const server = new McpServer({
 
 const sseManager = new SseManager(server);
 
-// Register prompts
-server.prompt(
-  searchJobsPrompt.name,
-  searchJobsPrompt.description,
-  searchJobsPrompt.schema,
-  searchJobsPrompt.messageBuilder,
-);
-
-server.prompt(
-  jobRecommendationsPrompt.name,
-  jobRecommendationsPrompt.description,
-  jobRecommendationsPrompt.schema,
-  jobRecommendationsPrompt.messageBuilder,
-);
-
-server.prompt(
-  resumeFeedbackPrompt.name,
-  resumeFeedbackPrompt.description,
-  resumeFeedbackPrompt.schema,
-  resumeFeedbackPrompt.messageBuilder,
-);
-
-// Register the search jobs tool
-server.tool(
-  searchJobsTool.name,
-  searchJobsTool.description,
-  searchJobsTool.schema,
-  searchJobsTool.callback,
-);
+searchJobsPrompt(server);
+jobRecommendationsPrompt(server);
+resumeFeedbackPrompt(server);
+searchJobsTool(server, sseManager);
 
 // Initialize transports
 let stdioTransport = null;
