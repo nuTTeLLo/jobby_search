@@ -29,10 +29,11 @@ export async function searchJobsHandler(params) {
     const args = buildCommandArgs(params);
     const cmd = `docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
-     
+    
     result = execSync(cmd).toString();
     const data = JSON.parse(result);
     
+    logger.info(`Found jobs: ${data.length}`);
     return {
       jobs: data,
       count: data.length || 0,

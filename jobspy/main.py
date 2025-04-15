@@ -32,8 +32,6 @@ def parse_args():
     return parser.parse_args()
 
 args = parse_args()
-print(args, file=sys.stderr)
-
 
 # Convert comma-separated string to list
 site_names = args.site_name.split(',')
@@ -52,7 +50,7 @@ jobs = scrape_jobs(
     linkedin_fetch_description=args.linkedin_fetch_description,
     proxies=proxies,
 )
-print(f"Found {len(jobs)} jobs", file=sys.stderr)
+# print(f"Found {len(jobs)} jobs", file=sys.stderr)
 
 # Output based on selected format
 if args.output:
