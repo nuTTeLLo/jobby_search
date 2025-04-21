@@ -125,6 +125,8 @@ export function searchJobsHandler(params) {
   }
 }
 
+
+
 /**
  * Build command arguments from parameters
  * @param {JobSearchParams} params - Search parameters

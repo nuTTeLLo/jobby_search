@@ -9,7 +9,7 @@ import { z } from 'zod';
 
 // Job Search Result Schema
 // Based on JobSpy's schema
-export const jobSchema = z.object({
+export const jobSpySchema = z.object({
   // ID
   id: z.string().optional(),
 
@@ -74,6 +74,33 @@ export const jobSchema = z.object({
   workFromHomeType: z.string().nullish(),
 });
 
+// Job Description Schema
+// Detailed structure for job postings
+export const jobDescriptionSchema = z.object({
+  title: z.string(),
+  company: z.string(),
+  type: z.string(),
+  date: z.string(),
+  description: z.string(),
+  location: z.object({
+    address: z.string(),
+    postalCode: z.string(),
+    city: z.string(),
+    countryCode: z.string(),
+    region: z.string(),
+  }),
+  remote: z.string(),
+  salary: z.string(),
+  experience: z.string(),
+  responsibilities: z.array(z.string()),
+  qualifications: z.array(z.string()),
+  skills: z.array(z.object({
+    name: z.string(),
+    level: z.string(),
+    keywords: z.array(z.string()),
+  })),
+});
+
 export const jobSearchResultSchema = z.object({
   query: z.object({
     searchTerm: z.string().nullable(),
@@ -83,6 +110,6 @@ export const jobSearchResultSchema = z.object({
     error: z.string().nullable().optional(),
   }),
   count: z.number().optional(),
-  jobs: z.array(jobSchema),
+  jobs: z.array(jobSpySchema),
   message: z.string().optional(),
 });

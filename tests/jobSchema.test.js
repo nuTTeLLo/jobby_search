@@ -1,4 +1,4 @@
-const { jobSchema, jobSearchResponseSchema } = require('../src/schemas/jobSchema');
+const { jobSpySchema, jobSearchResponseSchema } = require('../src/schemas/jobSpySchema');
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -27,7 +27,7 @@ describe('Job Schema', () => {
 
   test('validates a single job object', () => {
     const job = jobsData[0];
-    const { error } = jobSchema.validate(job);
+    const { error } = jobSpySchema.validate(job);
     expect(error).toBeUndefined();
   });
 
@@ -54,7 +54,7 @@ describe('Job Schema', () => {
       company: 'Invalid Test'
     };
 
-    const { error } = jobSchema.validate(invalidJob);
+    const { error } = jobSpySchema.validate(invalidJob);
     expect(error).toBeDefined();
     expect(error.message).toContain('"title" is required');
   });
@@ -66,7 +66,7 @@ describe('Job Schema', () => {
       is_remote: 'yes' // Should be boolean
     };
 
-    const { error } = jobSchema.validate(invalidTypeJob);
+    const { error } = jobSpySchema.validate(invalidTypeJob);
     expect(error).toBeDefined();
     expect(error.message).toContain('"id" must be a string');
   });
