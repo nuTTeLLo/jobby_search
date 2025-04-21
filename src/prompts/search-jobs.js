@@ -4,6 +4,11 @@ import { z } from 'zod';
 /**
  * Complete search jobs prompt definition for MCP server
  */
+/**
+ * Complete search jobs prompt definition for MCP server
+ * @param {import('@modelcontextprotocol/sdk/server/mcp.js').McpServer} server - The MCP server instance
+ * @returns {Object} The configured prompt
+ */
 export const searchJobsPrompt = server => server.prompt(
   'search_jobs',
   'Extract job search parameters from a natural language query',
