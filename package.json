@@ -22,7 +22,6 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
-    "@rekog/mcp-nest": "1.4.0-beta.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "winston": "^3.10.0",
