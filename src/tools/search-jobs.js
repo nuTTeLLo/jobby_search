@@ -1,6 +1,7 @@
 import logger from '../logger.js';
 import { searchParams } from '../schemas/searchParamsSchema.js';
 import { execSync } from 'child_process';
+import { jobDescriptionSchema } from '../schemas/jobSchema.js';
 
 /**
  * @typedef {Object} JobSearchParams
@@ -109,12 +110,13 @@ export function searchJobsHandler(params) {
 
     result = execSync(cmd).toString();
     const data = JSON.parse(result);
+    const jobs = convertJobsToDescriptionSchema(data)
 
     logger.info(`Found jobs: ${data.length}`);
     return {
       count: data.length || 0,
       message: 'Job search completed successfully',
-      jobs: data,
+      jobs,
     };
   } catch (error) {
     logger.error('Error in searchJobsHandler', {
@@ -126,6 +128,92 @@ export function searchJobsHandler(params) {
 }
 
 
+
+/**
+ * Convert a job from JobSpy schema to jobDescriptionSchema format
+ * @param {Object} jobSpyJob - Job in JobSpy format
+ * @returns {Object} Job in jobDescriptionSchema format
+ */
+export function convertToJobDescriptionSchema(jobSpyJob) {
+  const { jobTitle, companyName, jobType, datePosted, description } = jobSpyJob;
+  
+  // Extract location data
+  const locationData = {
+    address: jobSpyJob.location || '',
+    postalCode: jobSpyJob.postalCode || '',
+    city: jobSpyJob.city || '',
+    countryCode: jobSpyJob.country || '',
+    region: jobSpyJob.state || '',
+  };
+  
+  // Convert skills format
+  const skills = [];
+  if (jobSpyJob.requiredSkills && jobSpyJob.requiredSkills.length > 0) {
+    skills.push({
+      name: 'Required Skills',
+      level: 'Required',
+      keywords: jobSpyJob.requiredSkills,
+    });
+  }
+  
+  if (jobSpyJob.niceToHaveSkills && jobSpyJob.niceToHaveSkills.length > 0) {
+    skills.push({
+      name: 'Nice to Have Skills',
+      level: 'Preferred',
+      keywords: jobSpyJob.niceToHaveSkills,
+    });
+  }
+  
+  // Extract responsibilities and qualifications from description if available
+  const responsibilities = [];
+  const qualifications = [];
+  
+  // If no explicit lists are available, use the keywords as qualifications
+  if (jobSpyJob.keywords && jobSpyJob.keywords.length > 0) {
+    jobSpyJob.keywords.forEach(keyword => {
+      qualifications.push(keyword);
+    });
+  }
+  
+  // Convert to jobDescriptionSchema format
+  const jobDescription = {
+    title: jobTitle || '',
+    company: companyName || '',
+    type: jobType || 'Full-time',
+    date: datePosted || new Date().toISOString().slice(0, 7), // Format as YYYY-MM
+    description: description || '',
+    location: locationData,
+    remote: jobSpyJob.isRemote ? 'Remote' : 'On-site',
+    salary: jobSpyJob.salary || '',
+    experience: jobSpyJob.experience || 'Not specified',
+    responsibilities,
+    qualifications,
+    skills,
+  };
+  
+  try {
+    // Validate against schema
+    const validatedJob = jobDescriptionSchema.parse(jobDescription);
+    return validatedJob;
+  } catch (error) {
+    logger.warn('Job validation failed', { error: error.message, job: jobDescription });
+    return jobDescription; // Return unvalidated version
+  }
+}
+
+/**
+ * Convert multiple jobs from JobSpy schema to jobDescriptionSchema format
+ * @param {Array<Object>} jobSpyJobs - Array of jobs in JobSpy format
+ * @returns {Array<Object>} Array of jobs in jobDescriptionSchema format
+ */
+export function convertJobsToDescriptionSchema(jobSpyJobs) {
+  if (!Array.isArray(jobSpyJobs)) {
+    logger.warn('Expected array of jobs but received', { type: typeof jobSpyJobs });
+    return [];
+  }
+  
+  return jobSpyJobs.map(job => convertToJobDescriptionSchema(job));
+}
 
 /**
  * Build command arguments from parameters

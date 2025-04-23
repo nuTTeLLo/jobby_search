@@ -113,3 +113,62 @@ export const jobSearchResultSchema = z.object({
   jobs: z.array(jobSpySchema),
   message: z.string().optional(),
 });
+
+// Function to generate SQL for PostgreSQL table based on jobDescriptionSchema
+export const generateJobDescriptionTableSQL = () => {
+  return `
+`;
+};
+
+/**
+ * Function to insert a job description into PostgreSQL database
+ * @param {Object} jobData - Job data conforming to jobDescriptionSchema
+ * @param {Object} pgClient - PostgreSQL client instance
+ * @returns {Promise<Object>} - The inserted record
+ */
+export const insertJobDescription = async (jobData, pgClient) => {
+  const query = `
+    INSERT INTO job_descriptions (
+      title,
+      company,
+      type,
+      date,
+      description,
+      location,
+      remote,
+      salary,
+      experience,
+      responsibilities,
+      qualifications,
+      skills
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+    ) RETURNING *
+  `;
+  
+  // Validate the job data against schema before inserting
+  const validatedData = jobDescriptionSchema.parse(jobData);
+  
+  const values = [
+    validatedData.title,
+    validatedData.company,
+    validatedData.type,
+    validatedData.date,
+    validatedData.description,
+    JSON.stringify(validatedData.location),
+    validatedData.remote,
+    validatedData.salary,
+    validatedData.experience,
+    JSON.stringify(validatedData.responsibilities),
+    JSON.stringify(validatedData.qualifications),
+    JSON.stringify(validatedData.skills)
+  ];
+  
+  try {
+    const result = await pgClient.query(query, values);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error inserting job description:', error);
+    throw error;
+  }
+};
