@@ -2,6 +2,7 @@ import logger from '../logger.js';
 import { searchParams } from '../schemas/searchParamsSchema.js';
 import { execSync } from 'child_process';
 import { jobDescriptionSchema } from '../schemas/jobSchema.js';
+import { z } from 'zod';
 
 /**
  * @typedef {Object} JobSearchParams
@@ -104,13 +105,17 @@ export function searchJobsHandler(params) {
   try {
     logger.info('Starting job search with parameters', { params });
 
-    const args = buildCommandArgs(params);
+    const validatedParams = z.object(searchParams).parse(params);
+    
+    logger.info('Validated parameters', { validatedParams });
+
+    const args = buildCommandArgs(validatedParams);
     const cmd = `docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
 
     result = execSync(cmd).toString();
     const data = JSON.parse(result);
-    const jobs = convertJobsToDescriptionSchema(data)
+    const jobs = convertJobsToDescriptionSchema(data);
 
     logger.info(`Found jobs: ${data.length}`);
     return {
@@ -126,8 +131,6 @@ export function searchJobsHandler(params) {
     throw error;
   }
 }
-
-
 
 /**
  * Convert a job from JobSpy schema to jobDescriptionSchema format

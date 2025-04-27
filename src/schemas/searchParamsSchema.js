@@ -4,8 +4,26 @@ export const searchParams = {
   siteNames: z
     .string()
     .describe(
-      // eslint-disable-next-line max-len
       'Comma-separated list of job sites to search. Options: indeed,linkedin,zip_recruiter,glassdoor,google,bayt,naukri',
+    )
+    .refine(
+      (val) => {
+        const sites = val.split(',').map((site) => site.trim());
+        const validSites = [
+          'indeed',
+          'linkedin',
+          'zip_recruiter',
+          'glassdoor',
+          'google',
+          'bayt',
+          'naukri',
+        ];
+        return sites.every((site) => validSites.includes(site));
+      },
+      {
+        message:
+          'Invalid site names. Allowed values: indeed, linkedin, zip_recruiter, glassdoor, google, bayt, naukri',
+      },
     )
     .default('indeed'),
   searchTerm: z
