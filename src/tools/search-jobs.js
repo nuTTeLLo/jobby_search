@@ -110,7 +110,7 @@ export function searchJobsHandler(params) {
     logger.info('Validated parameters', { validatedParams });
 
     const args = buildCommandArgs(validatedParams);
-    const cmd = `docker run jobspy ${args.join(' ')}`;
+    const cmd = `sudo docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
 
     result = execSync(cmd).toString();
