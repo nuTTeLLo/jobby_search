@@ -52,7 +52,7 @@ export const searchParams = {
   location: z
     .string()
     .describe('Location for job search')
-    .default('San Francisco, CA'),
+    .default('remote'),
   googleSearchTerm: z
     .string()
     .nullable()
@@ -62,11 +62,13 @@ export const searchParams = {
     .number()
     .int()
     .describe('Number of results wanted')
+    .transform(val => val === 0 ? 20 : val)
     .default(20),
   hoursOld: z
     .number()
     .int()
     .describe('How many hours old the jobs can be')
+    .transform(val => val === 0 ? 72 : val)
     .default(72),
   countryIndeed: z
     .string()
