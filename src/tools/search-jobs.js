@@ -150,7 +150,24 @@ export function searchJobsHandler(params) {
   try {
     logger.info('Starting job search with parameters', { params });
 
-    const validatedParams = z.object(searchParams).parse(params);
+    // Clean params by removing empty strings and 0 values
+    const cleanedParams = {};
+    for (const [key, value] of Object.entries(params)) {
+      // Skip null, undefined, empty strings, and 0 values
+      if (
+        value === null ||
+        value === undefined ||
+        value === '' ||
+        value === 0
+      ) {
+        continue;
+      }
+      cleanedParams[key] = value;
+    }
+
+    logger.info('Cleaned parameters', { cleanedParams });
+
+    const validatedParams = z.object(searchParams).parse(cleanedParams);
 
     logger.info('Validated parameters', { validatedParams });
 
