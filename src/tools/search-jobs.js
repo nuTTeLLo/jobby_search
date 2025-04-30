@@ -6,16 +6,27 @@ import changeCase from 'change-case-object';
 
 /**
  * @typedef {Object} JobSearchParams
- * @property {string} [siteNames] - Names of job sites to search
+ * @property {string} [siteNames] - Names of job sites to search (linkedin, zip_recruiter, indeed, glassdoor, google, bayt)
  * @property {string} [searchTerm] - Term to search for
  * @property {string} [location] - Job location
+ * @property {number} [distance] - Distance in miles, default 50
+ * @property {string} [jobType] - Type of job: fulltime, parttime, internship, contract
  * @property {string} [googleSearchTerm] - Term for Google job search
- * @property {number} [resultsWanted] - Number of results to return
- * @property {number} [hoursOld] - Filter for jobs posted within specified hours
+ * @property {number} [resultsWanted] - Number of job results to retrieve for each site
+ * @property {boolean} [easyApply] - Filters for jobs that are hosted on the job board site
+ * @property {string} [descriptionFormat] - Format type of the job descriptions: markdown, html
+ * @property {number} [offset] - Starts the search from an offset
+ * @property {number} [hoursOld] - Filter jobs by the number of hours since posted
+ * @property {number} [verbose] - Controls verbosity (0=errors only, 1=errors+warnings, 2=all logs)
  * @property {string} [countryIndeed] - Country code for Indeed search
+ * @property {boolean} [isRemote] - Whether to search for remote jobs only
  * @property {boolean} [linkedinFetchDescription] - Whether to fetch LinkedIn job descriptions
+ * @property {string} [linkedinCompanyIds] - Searches for linkedin jobs with specific company ids
+ * @property {boolean} [enforceAnnualSalary] - Converts wages to annual salary
  * @property {string} [proxies] - Comma-separated list of proxies
+ * @property {string} [caCert] - Path to CA Certificate file for proxies
  * @property {'json'|'csv'} [format] - Output format: JSON or CSV
+ * @property {number} [timeout] - Timeout in milliseconds for the job search process
  */
 
 export const searchJobsTool = (server, sseManager) =>
@@ -147,7 +158,9 @@ export function searchJobsHandler(params) {
     const cmd = `sudo docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
 
-    result = execSync(cmd).toString();
+    const timeout = params.timeout || 60000; // Default timeout of 60 seconds
+    result = execSync(cmd, { timeout }).toString();
+
     const parsedData = JSON.parse(result);
 
     // Convert to camelCase and normalize date fields to ISO 8601
@@ -195,24 +208,54 @@ function buildCommandArgs(params) {
   if (params.location) {
     args.push('--location', `"${params.location}"`);
   }
+  if (params.distance) {
+    args.push('--distance', `${params.distance}`);
+  }
+  if (params.jobType) {
+    args.push('--job_type', `${params.jobType}`);
+  }
   if (params.googleSearchTerm) {
     args.push('--google_search_term', `"${params.googleSearchTerm}"`);
   }
   if (params.resultsWanted) {
-    args.push('--results_wanted', `"${params.resultsWanted}"`);
+    args.push('--results_wanted', `${params.resultsWanted}`);
+  }
+  if (params.easyApply) {
+    args.push('--easy_apply');
+  }
+  if (params.descriptionFormat) {
+    args.push('--description_format', `${params.descriptionFormat}`);
+  }
+  if (params.offset) {
+    args.push('--offset', `${params.offset}`);
   }
   if (params.hoursOld) {
-    args.push('--hours_old', `"${params.hoursOld}"`);
+    args.push('--hours_old', `${params.hoursOld}`);
+  }
+  if (params.verbose !== undefined) {
+    args.push('--verbose', `${params.verbose}`);
   }
   if (params.countryIndeed) {
     args.push('--country_indeed', `"${params.countryIndeed}"`);
   }
-  if (!!params.linkedinFetchDescription) {
+  if (params.isRemote) {
+    args.push('--is_remote');
+  }
+  if (params.linkedinFetchDescription) {
     args.push('--linkedin_fetch_description');
+  }
+  if (params.linkedinCompanyIds) {
+    args.push('--linkedin_company_ids', `"${params.linkedinCompanyIds}"`);
+  }
+  if (params.enforceAnnualSalary) {
+    args.push('--enforce_annual_salary');
   }
   if (params.proxies) {
     args.push('--proxies', `"${params.proxies}"`);
   }
-  args.push('--format', 'json');
+  if (params.caCert) {
+    args.push('--ca_cert', `"${params.caCert}"`);
+  }
+  args.push('--format', params.format || 'json');
   return args;
 }
