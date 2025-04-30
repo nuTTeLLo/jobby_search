@@ -33,7 +33,12 @@ export const jobSpySchema = z.object({
   postalCode: z.string().nullish(),
 
   // Dates
-  datePosted: z.string().nullish(),
+  datePosted: z
+    .string()
+    .nullish()
+    .describe(
+      'ISO 8601 formatted date string (e.g., "2025-04-29T14:30:00.000Z")'
+    ),
   jobType: z.string().nullish(),
 
   // Salary Information
