@@ -1,8 +1,8 @@
 import logger from '../logger.js';
 import { searchParams } from '../schemas/searchParamsSchema.js';
-import { execSync } from 'child_process';
-import { jobDescriptionSchema } from '../schemas/jobSchema.js';
+import { execSync } from 'node:child_process';
 import { z } from 'zod';
+import changeCase from 'change-case-object';
 
 /**
  * @typedef {Object} JobSearchParams
@@ -18,82 +18,116 @@ import { z } from 'zod';
  * @property {'json'|'csv'} [format] - Output format: JSON or CSV
  */
 
-export const searchJobsTool = (server, sseManager) => server.tool(
-  'search_jobs',
-  'Search for jobs across various job listing websites',
-  searchParams,
-  async (params, extra) => {
-    let progressInterval;
-    try {
-      logger.info('Received search_jobs request', { params, extra });
+export const searchJobsTool = (server, sseManager) =>
+  server.tool(
+    'search_jobs',
+    'Search for jobs across various job listing websites',
+    searchParams,
+    async (params, extra) => {
+      let progressInterval;
+      try {
+        logger.info('Received search_jobs request', { params, extra });
 
-      // Track progress for SSE clients
-      if (extra.sessionId && sseManager.hasConnection(extra.sessionId)) {
-        let progress = 0;
-        progressInterval = setInterval(() => {
-          progress += 5;
-          if (progress > 90) {
-            progress = 90; // Cap at 90% until complete
-          }
-
-          // Send progress to all connected clients
-          sseManager.notificationProgress(
-            {
-              type: 'progress',
-              tool: 'search_jobs',
-              progress,
-              message: `Searching for jobs (${progress}%)...`,
-            },
-            extra.sessionId,
-          );
-        }, 2000);
-      }
-
-      // Execute job search
-      const result = searchJobsHandler(params);
-
-      // Clean up progress interval
-      if (progressInterval) {
-        clearInterval(progressInterval);
-
-        // Send 100% progress update to all connected clients
+        // Track progress for SSE clients
         if (extra.sessionId && sseManager.hasConnection(extra.sessionId)) {
-          sseManager.notificationProgress(
-            {
-              type: 'progress',
-              tool: 'search_jobs',
-              progress: 100,
-              message: 'Job search completed',
-            },
-            extra.sessionId,
-          );
-        }
-      }
+          let progress = 0;
+          progressInterval = setInterval(() => {
+            progress += 5;
+            if (progress > 90) {
+              progress = 90; // Cap at 90% until complete
+            }
 
-      return {
-        isError: false,
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result, null, 2),
+            // Send progress to all connected clients
+            sseManager.notificationProgress(
+              {
+                type: 'progress',
+                tool: 'search_jobs',
+                progress,
+                message: `Searching for jobs (${progress}%)...`,
+              },
+              extra.sessionId
+            );
+          }, 2000);
+        }
+
+        // Execute job search
+        const result = searchJobsHandler(params);
+
+        // Clean up progress interval
+        if (progressInterval) {
+          clearInterval(progressInterval);
+
+          // Send 100% progress update to all connected clients
+          if (extra.sessionId && sseManager.hasConnection(extra.sessionId)) {
+            sseManager.notificationProgress(
+              {
+                type: 'progress',
+                tool: 'search_jobs',
+                progress: 100,
+                message: 'Job search completed',
+              },
+              extra.sessionId
+            );
+          }
+        }
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+        logger.error('Error in search_jobs handler', { error: error.message });
+        return {
+          isError: true,
+          error: {
+            message: error.message,
+            code: 'INTERNAL_SERVER_ERROR',
           },
-        ],
-      };
-    } catch (error) {
-      if (progressInterval) {
-        clearInterval(progressInterval);
+        };
       }
-      logger.error('Error in search_jobs handler', { error: error.message });
-      return {
-        isError: true,
-        error: {
-          message: error.message,
-          code: 'INTERNAL_SERVER_ERROR',
-        },
-      };
     }
-  },
-);
+  );
+
+/**
+ * Convert a date string to ISO 8601 format
+ * Handles various input formats and normalizes them
+ * @param {string|number|null} dateStr - The date string to convert
+ * @returns {string|null} - ISO 8601 formatted date string or null if invalid
+ */
+function convertToISODate(dateStr) {
+  if (!dateStr) return null;
+
+  try {
+    // If dateStr is a timestamp (number or numeric string)
+    if (!isNaN(dateStr)) {
+      // Check if it's milliseconds (13 digits) or seconds (10 digits)
+      const timestamp =
+        String(dateStr).length > 10 ? Number(dateStr) : Number(dateStr) * 1000;
+      return new Date(timestamp).toISOString();
+    }
+
+    // Otherwise try to parse as date string
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+
+    // If we couldn't parse it, return the original string
+    logger.warn(`Could not parse date: ${dateStr}`);
+    return dateStr;
+  } catch (error) {
+    logger.warn(`Error converting date: ${dateStr}`, { error: error.message });
+    return dateStr;
+  }
+}
 
 /**
  * Handler for the search_jobs MCP tool
@@ -106,7 +140,7 @@ export function searchJobsHandler(params) {
     logger.info('Starting job search with parameters', { params });
 
     const validatedParams = z.object(searchParams).parse(params);
-    
+
     logger.info('Validated parameters', { validatedParams });
 
     const args = buildCommandArgs(validatedParams);
@@ -114,14 +148,25 @@ export function searchJobsHandler(params) {
     logger.info(`Spawning process with args: ${cmd}`);
 
     result = execSync(cmd).toString();
-    const data = JSON.parse(result);
-    const jobs = convertJobsToDescriptionSchema(data);
+    const parsedData = JSON.parse(result);
+
+    // Convert to camelCase and normalize date fields to ISO 8601
+    const data = parsedData.map((job) => {
+      const jobCamelCase = changeCase.camelCase(job);
+
+      // Convert date fields to ISO 8601
+      if (jobCamelCase.datePosted) {
+        jobCamelCase.datePosted = convertToISODate(jobCamelCase.datePosted);
+      }
+
+      return jobCamelCase;
+    });
 
     logger.info(`Found jobs: ${data.length}`);
     return {
       count: data.length || 0,
       message: 'Job search completed successfully',
-      jobs,
+      jobs: data || [],
     };
   } catch (error) {
     logger.error('Error in searchJobsHandler', {
@@ -130,92 +175,6 @@ export function searchJobsHandler(params) {
     });
     throw error;
   }
-}
-
-/**
- * Convert a job from JobSpy schema to jobDescriptionSchema format
- * @param {Object} jobSpyJob - Job in JobSpy format
- * @returns {Object} Job in jobDescriptionSchema format
- */
-export function convertToJobDescriptionSchema(jobSpyJob) {
-  const { jobTitle, companyName, jobType, datePosted, description } = jobSpyJob;
-  
-  // Extract location data
-  const locationData = {
-    address: jobSpyJob.location || '',
-    postalCode: jobSpyJob.postalCode || '',
-    city: jobSpyJob.city || '',
-    countryCode: jobSpyJob.country || '',
-    region: jobSpyJob.state || '',
-  };
-  
-  // Convert skills format
-  const skills = [];
-  if (jobSpyJob.requiredSkills && jobSpyJob.requiredSkills.length > 0) {
-    skills.push({
-      name: 'Required Skills',
-      level: 'Required',
-      keywords: jobSpyJob.requiredSkills,
-    });
-  }
-  
-  if (jobSpyJob.niceToHaveSkills && jobSpyJob.niceToHaveSkills.length > 0) {
-    skills.push({
-      name: 'Nice to Have Skills',
-      level: 'Preferred',
-      keywords: jobSpyJob.niceToHaveSkills,
-    });
-  }
-  
-  // Extract responsibilities and qualifications from description if available
-  const responsibilities = [];
-  const qualifications = [];
-  
-  // If no explicit lists are available, use the keywords as qualifications
-  if (jobSpyJob.keywords && jobSpyJob.keywords.length > 0) {
-    jobSpyJob.keywords.forEach(keyword => {
-      qualifications.push(keyword);
-    });
-  }
-  
-  // Convert to jobDescriptionSchema format
-  const jobDescription = {
-    title: jobTitle || '',
-    company: companyName || '',
-    type: jobType || 'Full-time',
-    date: datePosted || new Date().toISOString().slice(0, 7), // Format as YYYY-MM
-    description: description || '',
-    location: locationData,
-    remote: jobSpyJob.isRemote ? 'Remote' : 'On-site',
-    salary: jobSpyJob.salary || '',
-    experience: jobSpyJob.experience || 'Not specified',
-    responsibilities,
-    qualifications,
-    skills,
-  };
-  
-  try {
-    // Validate against schema
-    const validatedJob = jobDescriptionSchema.parse(jobDescription);
-    return validatedJob;
-  } catch (error) {
-    logger.warn('Job validation failed', { error: error.message, job: jobDescription });
-    return jobDescription; // Return unvalidated version
-  }
-}
-
-/**
- * Convert multiple jobs from JobSpy schema to jobDescriptionSchema format
- * @param {Array<Object>} jobSpyJobs - Array of jobs in JobSpy format
- * @returns {Array<Object>} Array of jobs in jobDescriptionSchema format
- */
-export function convertJobsToDescriptionSchema(jobSpyJobs) {
-  if (!Array.isArray(jobSpyJobs)) {
-    logger.warn('Expected array of jobs but received', { type: typeof jobSpyJobs });
-    return [];
-  }
-  
-  return jobSpyJobs.map(job => convertToJobDescriptionSchema(job));
 }
 
 /**

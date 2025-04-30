@@ -1,6 +1,6 @@
 /**
  * JobSpy MCP Server - Job Schema Definitions
- * 
+ *
  * This file contains schema definitions for job search results
  * based on the structure of data returned by JobSpy.
  */
@@ -61,7 +61,7 @@ export const jobSpySchema = z.object({
   companyUrl: z.string().nullish(),
   companyLogo: z.string().nullish(),
   companyUrlDirect: z.string().nullish(),
-  companyAddresses: z.array(z.string()).nullish(),
+  companyAddresses: z.string().nullish(),
   companyNumEmployees: z.string().nullish(),
   companyRevenue: z.string().nullish(),
   companyDescription: z.string().nullish(),
@@ -72,33 +72,6 @@ export const jobSpySchema = z.object({
   postingStatus: z.string().nullish(),
   vacancyCount: z.string().nullish(),
   workFromHomeType: z.string().nullish(),
-});
-
-// Job Description Schema
-// Detailed structure for job postings
-export const jobDescriptionSchema = z.object({
-  title: z.string(),
-  company: z.string(),
-  type: z.string(),
-  date: z.string(),
-  description: z.string(),
-  location: z.object({
-    address: z.string(),
-    postalCode: z.string(),
-    city: z.string(),
-    countryCode: z.string(),
-    region: z.string(),
-  }),
-  remote: z.string(),
-  salary: z.string(),
-  experience: z.string(),
-  responsibilities: z.array(z.string()),
-  qualifications: z.array(z.string()),
-  skills: z.array(z.object({
-    name: z.string(),
-    level: z.string(),
-    keywords: z.array(z.string()),
-  })),
 });
 
 export const jobSearchResultSchema = z.object({
@@ -113,10 +86,3 @@ export const jobSearchResultSchema = z.object({
   jobs: z.array(jobSpySchema),
   message: z.string().optional(),
 });
-
-// Function to generate SQL for PostgreSQL table based on jobDescriptionSchema
-export const generateJobDescriptionTableSQL = () => {
-  return `
-`;
-};
-
