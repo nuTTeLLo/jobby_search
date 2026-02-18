@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+.node_modules
+.node_modules.nosync
+
+# pnpm
+pnpm-lock.yaml
+
+# Build outputs
+dist
+
+# Development files
+.git
+.gitignore
+*.md
+
+# IDE
+.idea
+.vscode
+
+# OS
+.DS_Store
