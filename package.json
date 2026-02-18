@@ -5,8 +5,14 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
+    "dev": "./scripts/dev.sh",
+    "dev:start-mcp": "podman run -d --name jobspy-mcp-dev -p 9423:9423 jobspy-mcp-server",
+    "dev:stop-mcp": "podman stop jobspy-mcp-dev 2>/dev/null; podman rm jobspy-mcp-dev 2>/dev/null; true",
+    "dev:backend": "cd backend && go run cmd/server/main.go",
+    "dev:frontend": "cd job-tracker-frontend && pnpm run dev",
+    "prod": "podman compose up -d",
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev:single": "nodemon src/index.js",
     "lint": "eslint --ext .js src/",
     "lint:fix": "eslint --ext .js src/ --fix",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -29,6 +35,7 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "concurrently": "^9.0.0",
     "eslint": "^8.57.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.31.0",

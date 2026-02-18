@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  jobspy-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: jobspy-mcp
+    ports:
+      - "9423:9423"
+    environment:
+      - JOBSPY_PORT=9423
+      - JOBSPY_HOST=0.0.0.0
+      - ENABLE_SSE=0
+    networks:
+      - job-tracker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9423/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: job-tracker-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - job-tracker-data:/app/data
+    environment:
+      - SERVER_PORT=8080
+      - DATABASE_PATH=/app/data/jobs.db
+      - MCP_SERVER_URL=http://jobspy-mcp:9423
+    depends_on:
+      jobspy-mcp:
+        condition: service_healthy
+    networks:
+      - job-tracker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./job-tracker-frontend
+      dockerfile: Dockerfile
+    container_name: job-tracker-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - job-tracker-network
+
+networks:
+  job-tracker-network:
+    driver: bridge
+
+volumes:
+  job-tracker-data:
+    driver: local
