@@ -228,10 +228,12 @@ const styles = {
   input: {
     width: '100%',
     padding: '8px 12px',
+    backgroundColor: 'white',
     border: '1px solid #ced4da',
     borderRadius: '4px',
     fontSize: '14px',
     boxSizing: 'border-box',
+    color: '#212529',
   },
   select: {
     width: '100%',
@@ -241,6 +243,7 @@ const styles = {
     fontSize: '14px',
     backgroundColor: 'white',
     boxSizing: 'border-box',
+    color: '#212529',
   },
   actions: {
     display: 'flex',

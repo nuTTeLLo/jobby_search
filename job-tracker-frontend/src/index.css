@@ -66,3 +66,9 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Fix checkbox visibility in dark mode */
+input[type="checkbox"] {
+  color-scheme: light !important;
+  accent-color: #0d6efd !important;
+}
