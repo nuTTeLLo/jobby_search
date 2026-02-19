@@ -3,8 +3,8 @@ version: "3.8"
 services:
   jobspy-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile.mcp
+      context: ./jobspy-mcp-server
+      dockerfile: Dockerfile
     container_name: jobspy-mcp
     ports:
       - "9423:9423"
