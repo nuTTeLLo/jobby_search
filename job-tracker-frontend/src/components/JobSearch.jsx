@@ -157,6 +157,7 @@ const styles = {
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
+    color: '#212529',
   },
   row: {
     display: 'flex',
@@ -181,11 +182,20 @@ const styles = {
     marginBottom: '5px',
     color: '#495057',
   },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+    accentColor: '#0d6efd',
+    marginRight: '8px',
+  },
   input: {
     padding: '8px 12px',
     border: '1px solid #ced4da',
     borderRadius: '4px',
     fontSize: '14px',
+    backgroundColor: 'white',
+    color: '#212529',
   },
   select: {
     padding: '8px 12px',
@@ -193,12 +203,14 @@ const styles = {
     borderRadius: '4px',
     fontSize: '14px',
     backgroundColor: 'white',
+    color: '#212529',
   },
   checkboxLabel: {
     display: 'flex',
     alignItems: 'center',
     gap: '5px',
     fontSize: '14px',
+    color: '#212529',
     cursor: 'pointer',
   },
   button: {
