@@ -11,7 +11,7 @@ services:
     environment:
       - JOBSPY_PORT=9423
       - JOBSPY_HOST=0.0.0.0
-      - ENABLE_SSE=0
+      - ENABLE_SSE=1
     networks:
       - job-tracker-network
     healthcheck:
@@ -28,7 +28,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - job-tracker-data:/app/data
+      - ./backend/data:/app/data
     environment:
       - SERVER_PORT=8080
       - DATABASE_PATH=/app/data/jobs.db
