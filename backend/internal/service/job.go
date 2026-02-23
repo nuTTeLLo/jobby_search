@@ -30,6 +30,7 @@ type MCPSearchParams struct {
 	SiteNames     string `json:"site_names"`
 	SearchTerm    string `json:"search_term"`
 	Location      string `json:"location"`
+	CountryIndeed string `json:"country_indeed"`
 	Distance      int    `json:"distance"`
 	JobType       string `json:"job_type"`
 	ResultsWanted int    `json:"results_wanted"`
@@ -74,6 +75,7 @@ type MCPJob struct {
 	Summary         string  `json:"summary"`
 	URL             string  `json:"url"`
 	Company         string  `json:"company"`
+	Source          string  `json:"source"`
 }
 
 func (s *JobService) CreateJob(input *domain.JobCreateInput) (*domain.Job, error) {
@@ -279,11 +281,81 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 			Salary:      salary,
 			JobType:     mcpJob.JobType,
 			IsRemote:    mcpJob.IsRemote,
-			Source:      "mcp",
+			Source:      mcpJob.Source,
 			Status:      string(domain.StatusNew),
 		}
 		results = append(results, SearchResult{Job: job, IsSaved: isSaved})
 	}
 
 	return results, nil
+}
+
+// Attachment constants
+const (
+	MaxFileSize                int64 = 10 * 1024 * 1024 // 10MB
+	AllowedFileTypeResume            = "resume"
+	AllowedFileTypeCoverLetter       = "cover_letter"
+)
+
+var allowedMIMETypes = map[string]bool{
+	"application/pdf":    true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+}
+
+type AttachmentInput struct {
+	JobID    string
+	FileName string
+	FileType string // "resume" or "cover_letter"
+	MIMEType string
+	Data     []byte
+}
+
+func (s *JobService) CreateAttachment(input *AttachmentInput) (*domain.Attachment, error) {
+	// Validate file type
+	if input.FileType != AllowedFileTypeResume && input.FileType != AllowedFileTypeCoverLetter {
+		return nil, fmt.Errorf("invalid file type: %s (must be 'resume' or 'cover_letter')", input.FileType)
+	}
+
+	// Validate MIME type
+	if !allowedMIMETypes[input.MIMEType] {
+		return nil, fmt.Errorf("invalid MIME type: %s (allowed: application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document)", input.MIMEType)
+	}
+
+	// Validate file size
+	if int64(len(input.Data)) > MaxFileSize {
+		return nil, fmt.Errorf("file too large: max size is 10MB")
+	}
+
+	// Verify job exists
+	_, err := s.repo.GetByID(input.JobID)
+	if err != nil {
+		return nil, fmt.Errorf("job not found: %w", err)
+	}
+
+	attachment := &domain.Attachment{
+		JobID:    input.JobID,
+		FileName: input.FileName,
+		FileType: input.FileType,
+		MIMEType: input.MIMEType,
+		Data:     input.Data,
+		FileSize: int64(len(input.Data)),
+	}
+
+	if err := s.repo.CreateAttachment(attachment); err != nil {
+		return nil, err
+	}
+	return attachment, nil
+}
+
+func (s *JobService) GetAttachment(id string) (*domain.Attachment, error) {
+	return s.repo.GetAttachmentByID(id)
+}
+
+func (s *JobService) GetAttachmentsByJobID(jobID string) ([]domain.Attachment, error) {
+	return s.repo.GetAttachmentsByJobID(jobID)
+}
+
+func (s *JobService) DeleteAttachment(id string) error {
+	return s.repo.DeleteAttachment(id)
 }

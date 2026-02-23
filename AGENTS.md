@@ -2,7 +2,7 @@
 
 Three components: MCP Server (`jobspy-mcp-server/`), Go Backend (`backend/`), React Frontend (`job-tracker-frontend/`).
 
-> **Important**: Use **pnpm** instead of npm for all Node.js package management (symlink preservation for nested node_modules).
+> **Important**: Use **pnpm** instead of npm for Node.js package management.
 
 ---
 
@@ -15,20 +15,17 @@ pnpm install
 pnpm start              # Production
 pnpm dev                # Development (nodemon)
 pnpm lint / pnpm lint:fix
-# Test directly
-curl -X POST "http://localhost:9423/api" -H "Content-Type: application/json" \
-  -d '{"method":"search_jobs","params":{"search_term":"software engineer","location":"remote","site_names":"indeed"}}'
 ```
 
-### Go Backend
+### Go Backend (PostgreSQL)
 ```bash
 cd backend
+docker-compose up -d  # Start PostgreSQL (port 5432)
 go build -o job-tracker-backend ./cmd/server/main.go
 go run cmd/server/main.go
 SERVER_PORT=8081 go run cmd/server/main.go  # Custom port
 go test ./...              # All tests
-go test -v ./...           # Verbose
-go test -v ./internal/repository/...  # Specific test
+go test -v ./internal/repository/...  # Single test
 go fmt ./... && go vet ./... && go mod tidy
 ```
 
@@ -57,25 +54,12 @@ npm run lint
 | **Error Handling** | Return errors last; use `fmt.Errorf("context: %w", err)` |
 | **GORM** | Use `*gorm.DB` in `BeforeCreate` hook for UUIDs |
 
-```go
-import (
-    "fmt"
-    "net/http"
-
-    "github.com/go-chi/chi/v5"
-    "gorm.io/gorm"
-
-    "job-tracker-backend/internal/domain"
-)
-```
-
 ### React Frontend (JavaScript/JSX)
 
 | Aspect | Rule |
 |--------|------|
 | **Indentation** | 2 spaces |
-| **Quotes** | Single quotes |
-| **Semicolons** | Required |
+| **Quotes/Semicolons** | Single quotes, required |
 | **Components** | PascalCase files (`.jsx`), camelCase functions |
 | **Constants** | UPPER_SNAKE_CASE |
 | **API** | Use axios, service modules in `src/services/` |
@@ -88,40 +72,41 @@ import (
 | **Quotes/Semicolons** | Single quotes, required |
 | **Modules** | ES6 `import`/`export` (no CommonJS) |
 | **Validation** | Zod schemas in `src/schemas/` |
-| **Errors** | Return error objects, never throw (prevents crashes) |
+| **Errors** | Return error objects, never throw |
 | **Logging** | Use winston logger |
-
-```javascript
-// Order: built-ins → external → local
-import fs from 'fs';
-import { z } from 'zod';
-import { searchParams } from '../schemas/searchParamsSchema.js';
-```
 
 ---
 
 ## Database
 
-**SQLite**: `backend/data/jobs.db` (auto-created via GORM)
+### Backup & Restore
+```bash
+# Backup (BYTEA columns included)
+pg_dump -h localhost -U jobuser -d jobtracker -Fc -f jobtracker_backup.dump
 
-```sql
-CREATE TABLE jobs (
-    id VARCHAR(36) PRIMARY KEY,
-    job_title VARCHAR(500) NOT NULL,
-    company_name VARCHAR(500),
-    location VARCHAR(500),
-    job_url VARCHAR(2000) UNIQUE,
-    description TEXT,
-    salary VARCHAR(200),
-    job_type VARCHAR(100),
-    is_remote BOOLEAN DEFAULT 0,
-    source VARCHAR(100),
-    status VARCHAR(50) DEFAULT 'new',
-    notes TEXT,
-    created_at DATETIME,
-    updated_at DATETIME
-);
+# Restore
+pg_restore -h localhost -U jobuser -d jobtracker -c jobtracker_backup.dump
+
+# Or use scripts
+./scripts/backup.sh
+./scripts/restore.sh backups/jobtracker_20240220.dump
+
+# Docker (if pg_dump not installed)
+docker exec -it job-tracker-db pg_dump -U jobuser -d jobtracker -Fc -f /tmp/backup.dump
+docker cp job-tracker-db:/tmp/backup.dump ./
 ```
+
+### Environment Variables
+
+| Variable       | Default               | Description       |
+| -------------- | --------------------- | ----------------- |
+| `DB_HOST`        | localhost             | PostgreSQL host   |
+| `DB_PORT`        | 5432                  | PostgreSQL port   |
+| `DB_USER`        | jobuser               | Database user     |
+| `DB_PASSWORD`    | jobpass               | Database password |
+| `DB_NAME`        | jobtracker            | Database name     |
+| `SERVER_PORT`    | 8080                  | Backend port      |
+| `MCP_SERVER_URL` | http://localhost:9423 | MCP server URL    |
 
 ---
 
@@ -138,6 +123,10 @@ CREATE TABLE jobs (
 | DELETE | `/api/jobs/:id` | Delete job |
 | PATCH | `/api/jobs/:id/status` | Update job status |
 | POST | `/api/jobs/search` | Search via MCP and save |
+| POST | `/api/jobs/:id/attachments` | Upload attachment |
+| GET | `/api/jobs/:id/attachments` | List attachments |
+| GET | `/api/jobs/:id/attachments/:id/download` | Download attachment |
+| DELETE | `/api/jobs/:id/attachments/:id` | Delete attachment |
 | GET | `/health` | Health check |
 
 ### MCP Server API (Port 9423)
@@ -148,32 +137,3 @@ CREATE TABLE jobs (
 | `/health` | GET | Health check |
 | `/sse` | GET | SSE transport |
 | `/messages` | POST | SSE message handling |
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_PORT` | 8080 | Backend port |
-| `DATABASE_PATH` | `./data/jobs.db` | SQLite file path |
-| `MCP_SERVER_URL` | `http://localhost:9423` | MCP server URL |
-| `JOBSPY_PORT` | 9423 | MCP server port |
-| `JOBSPY_HOST` | 0.0.0.0 | MCP server host |
-| `ENABLE_SSE` | 0 | Enable SSE transport |
-
----
-
-## Testing
-
-```bash
-# Start all services
-cd jobspy-mcp-server && pnpm start
-cd backend && go run cmd/server/main.go
-cd job-tracker-frontend && npm run dev
-
-# Test job search
-curl -X POST "http://localhost:8080/api/jobs/search" \
-  -H "Content-Type: application/json" \
-  -d '{"site_names":"indeed","search_term":"software engineer","location":"remote","results_wanted":5}'
-```

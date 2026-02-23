@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 
 	"job-tracker-backend/internal/domain"
@@ -20,6 +22,14 @@ func NewJobHandler(svc *service.JobService) *JobHandler {
 	return &JobHandler{service: svc}
 }
 
+type AttachmentHandler struct {
+	service *service.JobService
+}
+
+func NewAttachmentHandler(svc *service.JobService) *AttachmentHandler {
+	return &AttachmentHandler{service: svc}
+}
+
 func (h *JobHandler) Routes() http.Handler {
 	r := chi.NewRouter()
 
@@ -30,6 +40,9 @@ func (h *JobHandler) Routes() http.Handler {
 	r.Put("/{id}", h.UpdateJob)
 	r.Delete("/{id}", h.DeleteJob)
 	r.Patch("/{id}/status", h.UpdateJobStatus)
+
+	attachmentHandler := NewAttachmentHandler(h.service)
+	r.Mount("/api/jobs/{id}/attachments", attachmentHandler.Routes())
 
 	return r
 }
@@ -195,4 +208,147 @@ func (h *JobHandler) SearchJobs(w http.ResponseWriter, r *http.Request) {
 		"count": len(jobs),
 		"jobs":  jobs,
 	}))
+}
+
+func (h *AttachmentHandler) Routes() http.Handler {
+	r := chi.NewRouter()
+
+	r.Post("/", h.UploadAttachment)
+	r.Get("/", h.ListAttachments)
+	r.Get("/{id}", h.GetAttachment)
+	r.Get("/{id}/download", h.DownloadAttachment)
+	r.Delete("/{id}", h.DeleteAttachment)
+
+	return r
+}
+
+func (h *AttachmentHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "id")
+
+	// Parse multipart form
+	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10MB max
+		json.NewEncoder(w).Encode(response.Error("Failed to parse form data"))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		json.NewEncoder(w).Encode(response.Error("Failed to get file from form"))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	fileType := r.FormValue("file_type")
+	if fileType == "" {
+		fileType = "resume"
+	}
+
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		json.NewEncoder(w).Encode(response.Error("Failed to read file"))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	input := &service.AttachmentInput{
+		JobID:    jobID,
+		FileName: header.Filename,
+		FileType: fileType,
+		MIMEType: header.Header.Get("Content-Type"),
+		Data:     fileBytes,
+	}
+
+	attachment, err := h.service.CreateAttachment(input)
+	if err != nil {
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Return without the binary data
+	attachment.Data = nil
+	json.NewEncoder(w).Encode(response.Success(attachment))
+}
+
+func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "id")
+
+	attachments, err := h.service.GetAttachmentsByJobID(jobID)
+	if err != nil {
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Don't send binary data in list
+	for i := range attachments {
+		attachments[i].Data = nil
+	}
+
+	if attachments == nil {
+		attachments = []domain.Attachment{}
+	}
+
+	json.NewEncoder(w).Encode(response.Success(attachments))
+}
+
+func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	attachment, err := h.service.GetAttachment(id)
+	if err != nil {
+		if err == appErrors.ErrNotFound {
+			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Don't send binary data in get
+	attachment.Data = nil
+	json.NewEncoder(w).Encode(response.Success(attachment))
+}
+
+func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	attachment, err := h.service.GetAttachment(id)
+	if err != nil {
+		if err == appErrors.ErrNotFound {
+			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", attachment.MIMEType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", attachment.FileName))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
+	w.Write(attachment.Data)
+}
+
+func (h *AttachmentHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	err := h.service.DeleteAttachment(id)
+	if err != nil {
+		if err == appErrors.ErrNotFound {
+			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(response.SuccessMessage("Attachment deleted successfully"))
 }

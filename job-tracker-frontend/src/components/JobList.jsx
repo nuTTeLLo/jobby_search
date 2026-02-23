@@ -76,6 +76,7 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
             <th style={styles.th}>Location</th>
             <th style={styles.th}>Status</th>
             <th style={styles.th}>Source</th>
+            <th style={styles.th}>Attachments</th>
             <th style={styles.th}>Actions</th>
           </tr>
         </thead>
@@ -104,7 +105,16 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                 />
               </td>
               <td style={styles.td}>
-                <span style={styles.source}>{job.source || 'manual'}</span>
+                <span style={styles.sourceBadge}>
+                  {job.source || 'manual'}
+                </span>
+              </td>
+              <td style={styles.td}>
+                {job.attachments?.length > 0 && (
+                  <span style={styles.attachmentBadge}>
+                    📎 {job.attachments.length}
+                  </span>
+                )}
               </td>
               <td style={styles.td}>
                 <button
@@ -172,10 +182,26 @@ const styles = {
     fontSize: '11px',
     fontWeight: '500',
   },
-  source: {
-    fontSize: '12px',
-    color: '#6c757d',
+  sourceBadge: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    backgroundColor: '#e7f1ff',
+    color: '#0d6efd',
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontWeight: '500',
     textTransform: 'capitalize',
+  },
+  attachmentBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '2px 8px',
+    backgroundColor: '#e7f1ff',
+    color: '#0d6efd',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '500',
   },
   actionBtn: {
     background: 'none',

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { searchJobs } from '../services/api';
 
 const SITES = [
   { value: 'indeed', label: 'Indeed' },
@@ -17,15 +16,28 @@ const JOB_TYPES = [
   { value: 'internship', label: 'Internship' },
 ];
 
+const COUNTRIES = [
+  { value: 'australia', label: 'Australia' },
+  { value: 'singapore', label: 'Singapore' },
+  { value: 'usa', label: 'USA' },
+];
+
 export default function JobSearch({ onSearch, loading }) {
   const [formData, setFormData] = useState({
     searchTerm: 'software engineer',
-    location: 'remote',
-    siteNames: 'indeed',
+    location: '',
+    siteNames: {
+      indeed: true,
+      linkedin: true,
+      zip_recruiter: false,
+      glassdoor: false,
+      google: false,
+    },
     jobType: '',
     resultsWanted: 20,
     hoursOld: 72,
     isRemote: false,
+    country: 'usa',
   });
 
   const handleChange = (e) => {
@@ -36,16 +48,30 @@ export default function JobSearch({ onSearch, loading }) {
     }));
   };
 
+  const handleSiteChange = (site) => {
+    setFormData((prev) => ({
+      ...prev,
+      siteNames: {
+        ...prev.siteNames,
+        [site]: !prev.siteNames[site],
+      },
+    }));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const params = {
-      site_names: formData.siteNames,
+      site_names: Object.entries(formData.siteNames)
+        .filter(([, selected]) => selected)
+        .map(([site]) => site)
+        .join(','),
       search_term: formData.searchTerm,
       location: formData.location,
       job_type: formData.jobType || undefined,
       results_wanted: parseInt(formData.resultsWanted),
       hours_old: parseInt(formData.hoursOld),
       is_remote: formData.isRemote,
+      country_indeed: formData.country || undefined,
       format: 'json',
     };
     onSearch(params);
@@ -73,23 +99,38 @@ export default function JobSearch({ onSearch, loading }) {
             value={formData.location}
             onChange={handleChange}
             style={styles.input}
-            required
+            placeholder="e.g. San Francisco, CA or Remote"
           />
         </div>
         <div style={styles.field}>
-          <label style={styles.label}>Site</label>
+          <label style={styles.label}>Country</label>
           <select
-            name="siteNames"
-            value={formData.siteNames}
+            name="country"
+            value={formData.country}
             onChange={handleChange}
             style={styles.select}
           >
-            {SITES.map((site) => (
-              <option key={site.value} value={site.value}>
-                {site.label}
+            {COUNTRIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </select>
+        </div>
+        <div style={styles.field}>
+          <label style={styles.label}>Sites</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {SITES.map((site) => (
+              <label key={site.value} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={formData.siteNames[site.value] || false}
+                  onChange={() => handleSiteChange(site.value)}
+                />
+                {site.label}
+              </label>
+            ))}
+          </div>
         </div>
       </div>
       <div style={styles.row}>
@@ -109,7 +150,7 @@ export default function JobSearch({ onSearch, loading }) {
           </select>
         </div>
         <div style={styles.field}>
-          <label style={styles.label}>Results</label>
+          <label style={styles.label}>Results per Site</label>
           <input
             type="number"
             name="resultsWanted"

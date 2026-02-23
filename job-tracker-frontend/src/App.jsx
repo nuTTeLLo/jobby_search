@@ -23,6 +23,7 @@ function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [message, setMessage] = useState(null);
+  const [hoveredJob, setHoveredJob] = useState(null);
 
   useEffect(() => {
     fetchJobs();
@@ -64,7 +65,7 @@ function App() {
         salary: job.salary,
         job_type: job.job_type,
         is_remote: job.is_remote,
-        source: 'mcp',
+        source: job.source || 'mcp',
       };
       await createJob(jobData);
       showMessage('Job added to tracker', 'success');
@@ -160,7 +161,7 @@ function App() {
         {searchResults.length > 0 && (
           <div style={styles.searchResults}>
             <h2 style={styles.sectionTitle}>
-              Search Results 
+              Search Results ({searchResults.length})
               <button 
                 onClick={() => setSearchResults([])}
                 style={styles.clearBtn}
@@ -170,7 +171,15 @@ function App() {
             </h2>
             <div style={styles.resultsGrid}>
               {searchResults.map((job, index) => (
-                <div key={index} style={styles.resultCard}>
+                <div 
+                  key={index}
+                  style={{
+                    ...styles.resultCard,
+                    ...(hoveredJob === job.job_url ? styles.resultCardHover : {})
+                  }}
+                  onMouseEnter={() => setHoveredJob(job.job_url)}
+                  onMouseLeave={() => setHoveredJob(null)}
+                >
                   <div style={styles.resultHeader}>
                     <a 
                       href={job.job_url} 
@@ -189,8 +198,19 @@ function App() {
                   <div style={styles.resultMeta}>
                     {job.job_type && <span style={styles.resultTag}>{job.job_type}</span>}
                     {job.is_remote && <span style={styles.resultTag}>Remote</span>}
+                    {job.source && (
+                      <span style={styles.sourceBadge}>{job.source}</span>
+                    )}
                   </div>
                   {job.salary && <div style={styles.resultSalary}>{job.salary}</div>}
+                  {job.description && (
+                    <div style={{
+                      ...styles.resultDescription,
+                      ...(hoveredJob === job.job_url ? styles.resultDescriptionExpanded : {})
+                    }}>
+                      {job.description}
+                    </div>
+                  )}
                   <button 
                     onClick={() => handleAddFromSearch(job)}
                     disabled={job.is_saved}
@@ -249,6 +269,7 @@ function App() {
             setModalOpen(false);
             setEditingJob(null);
           }}
+          onRefresh={fetchJobs}
         />
       )}
     </div>
@@ -305,6 +326,7 @@ const styles = {
   resultsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+    alignItems: 'start',
     gap: '15px',
   },
   resultCard: {
@@ -312,6 +334,7 @@ const styles = {
     borderRadius: '8px',
     padding: '15px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    position: 'relative',
   },
   resultHeader: {
     display: 'flex',
@@ -356,11 +379,48 @@ const styles = {
     padding: '2px 8px',
     borderRadius: '4px',
   },
+  sourceBadge: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    backgroundColor: '#e7f1ff',
+    color: '#0d6efd',
+    borderRadius: '4px',
+    fontSize: '10px',
+    fontWeight: '500',
+  },
   resultSalary: {
     fontSize: '13px',
     color: '#198754',
     fontWeight: '500',
     marginBottom: '12px',
+  },
+  resultDescription: {
+    fontSize: '12px',
+    color: '#666',
+    marginTop: '6px',
+    lineHeight: '1.4',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxHeight: '30px',
+    transition: 'all 0.2s ease',
+  },
+  resultDescriptionExpanded: {
+    whiteSpace: 'normal',
+    maxHeight: '200px',
+    overflowY: 'auto',
+    position: 'absolute',
+    left: '10px',
+    right: '10px',
+    top: '100%',
+    backgroundColor: 'white',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+    zIndex: '10',
+    padding: '10px',
+    borderRadius: '4px',
+  },
+  resultCardHover: {
+    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
   },
   addBtn: {
     width: '100%',
