@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres_data:/var/lib/postgresql/data
     networks:
       - job-tracker-network
     healthcheck:
@@ -83,6 +83,3 @@ services:
 networks:
   job-tracker-network:
     driver: bridge
-
-volumes:
-  postgres_data:

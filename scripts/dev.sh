@@ -47,6 +47,7 @@ start_postgres() {
             -e POSTGRES_PASSWORD=jobpass \
             -e POSTGRES_DB=jobtracker \
             -p ${POSTGRES_PORT}:5432 \
+            -v ./data/postgres_data:/var/lib/postgresql/data \
             postgres:16-alpine
     fi
     
