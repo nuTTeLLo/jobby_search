@@ -18,18 +18,15 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies (PostgreSQL client instead of SQLite)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libsqlite3-0 \
+    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
 COPY --from=builder /app/job-tracker-backend .
-
-# Create data directory
-RUN mkdir -p /app/data
 
 # Expose port
 EXPOSE 8080

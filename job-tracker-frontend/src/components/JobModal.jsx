@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from '../services/api';
 
 const JOB_TYPES = [
   { value: '', label: 'Select type...' },
@@ -8,7 +9,12 @@ const JOB_TYPES = [
   { value: 'internship', label: 'Internship' },
 ];
 
-export default function JobModal({ job, onSave, onClose }) {
+const FILE_TYPES = [
+  { value: 'resume', label: 'Resume' },
+  { value: 'cover_letter', label: 'Cover Letter' },
+];
+
+export default function JobModal({ job, onSave, onClose, onRefresh }) {
   const [formData, setFormData] = useState({
     job_title: '',
     company_name: '',
@@ -21,6 +27,12 @@ export default function JobModal({ job, onSave, onClose }) {
     notes: '',
   });
   const [error, setError] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFileType, setSelectedFileType] = useState('resume');
+
+  const isEditing = !!job;
 
   useEffect(() => {
     if (job) {
@@ -35,8 +47,20 @@ export default function JobModal({ job, onSave, onClose }) {
         is_remote: job.is_remote || false,
         notes: job.notes || '',
       });
+      loadAttachments();
     }
   }, [job]);
+
+  const loadAttachments = async () => {
+    if (job?.id) {
+      try {
+        const data = await getAttachments(job.id);
+        setAttachments(data);
+      } catch (err) {
+        console.error('Failed to load attachments:', err);
+      }
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -59,6 +83,54 @@ export default function JobModal({ job, onSave, onClose }) {
     onSave(formData);
   };
 
+  const handleFileChange = (e) => {
+    setSelectedFile(e.target.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile || !job?.id) return;
+    
+    setUploading(true);
+    try {
+      await uploadAttachment(job.id, selectedFile, selectedFileType);
+      await loadAttachments();
+      setSelectedFile(null);
+      // Reset file input
+      document.getElementById('file-input').value = '';
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to upload:', err);
+      setError('Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (attachment) => {
+    try {
+      await downloadAttachment(job.id, attachment.id);
+    } catch (err) {
+      console.error('Failed to download:', err);
+    }
+  };
+
+  const handleDelete = async (attachmentId) => {
+    if (!confirm('Are you sure you want to delete this attachment?')) return;
+    try {
+      await deleteAttachment(attachmentId);
+      await loadAttachments();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to delete:', err);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
@@ -68,6 +140,7 @@ export default function JobModal({ job, onSave, onClose }) {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div style={styles.error}>{error}</div>}
+          
           <div style={styles.field}>
             <label style={styles.label}>Job Title *</label>
             <input
@@ -101,6 +174,84 @@ export default function JobModal({ job, onSave, onClose }) {
               required
             />
           </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Description</label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
+            />
+          </div>
+
+          {isEditing && (
+            <div style={styles.attachmentsSection}>
+              <label style={styles.label}>Attachments</label>
+              
+              {attachments.length > 0 && (
+                <div style={styles.attachmentList}>
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} style={styles.attachmentItem}>
+                      <span style={styles.attachmentIcon}>📄</span>
+                      <div style={styles.attachmentInfo}>
+                        <span style={styles.attachmentName}>{attachment.file_name}</span>
+                        <span style={styles.attachmentMeta}>
+                          {attachment.file_type === 'resume' ? 'Resume' : 'Cover Letter'} • {formatFileSize(attachment.file_size)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(attachment)}
+                        style={styles.attachmentBtn}
+                      >
+                        Download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(attachment.id)}
+                        style={styles.deleteBtn}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={styles.uploadSection}>
+                <input
+                  id="file-input"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  style={styles.fileInput}
+                />
+                <select
+                  value={selectedFileType}
+                  onChange={(e) => setSelectedFileType(e.target.value)}
+                  style={styles.fileTypeSelect}
+                >
+                  {FILE_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!selectedFile || uploading}
+                  style={styles.uploadBtn}
+                >
+                  {uploading ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+              <div style={styles.uploadHint}>
+                Accepted: PDF, DOC, DOCX (max 10MB)
+              </div>
+            </div>
+          )}
+
           <div style={styles.row}>
             <div style={styles.field}>
               <label style={styles.label}>Location</label>
@@ -179,7 +330,7 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     padding: '24px',
-    width: '500px',
+    width: '550px',
     maxWidth: '90%',
     maxHeight: '90vh',
     overflowY: 'auto',
@@ -244,6 +395,96 @@ const styles = {
     backgroundColor: 'white',
     boxSizing: 'border-box',
     color: '#212529',
+  },
+  attachmentsSection: {
+    marginBottom: '15px',
+    padding: '15px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '4px',
+    border: '1px solid #dee2e6',
+  },
+  attachmentList: {
+    marginBottom: '12px',
+  },
+  attachmentItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '8px',
+    backgroundColor: 'white',
+    borderRadius: '4px',
+    marginBottom: '8px',
+    border: '1px solid #dee2e6',
+  },
+  attachmentIcon: {
+    fontSize: '18px',
+  },
+  attachmentInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  attachmentName: {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#212529',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  attachmentMeta: {
+    display: 'block',
+    fontSize: '12px',
+    color: '#6c757d',
+  },
+  attachmentBtn: {
+    padding: '4px 10px',
+    backgroundColor: '#0d6efd',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  deleteBtn: {
+    padding: '4px 8px',
+    backgroundColor: 'transparent',
+    color: '#dc3545',
+    border: '1px solid #dc3545',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  uploadSection: {
+    display: 'flex',
+    gap: '10px',
+    alignItems: 'center',
+  },
+  fileInput: {
+    flex: 1,
+    fontSize: '14px',
+  },
+  fileTypeSelect: {
+    width: '120px',
+    padding: '8px',
+    border: '1px solid #ced4da',
+    borderRadius: '4px',
+    fontSize: '14px',
+    backgroundColor: 'white',
+  },
+  uploadBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  uploadHint: {
+    marginTop: '8px',
+    fontSize: '12px',
+    color: '#6c757d',
   },
   actions: {
     display: 'flex',

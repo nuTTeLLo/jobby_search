@@ -79,3 +79,43 @@ func (r *JobRepository) CreateBatch(jobs []domain.Job) error {
 	}
 	return r.db.Create(&jobs).Error
 }
+
+// Attachment methods
+
+func (r *JobRepository) CreateAttachment(attachment *domain.Attachment) error {
+	return r.db.Create(attachment).Error
+}
+
+func (r *JobRepository) GetAttachmentByID(id string) (*domain.Attachment, error) {
+	var attachment domain.Attachment
+	if err := r.db.First(&attachment, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appErrors.ErrNotFound
+		}
+		return nil, err
+	}
+	return &attachment, nil
+}
+
+func (r *JobRepository) GetAttachmentsByJobID(jobID string) ([]domain.Attachment, error) {
+	var attachments []domain.Attachment
+	if err := r.db.Where("job_id = ?", jobID).Order("created_at DESC").Find(&attachments).Error; err != nil {
+		return nil, err
+	}
+	return attachments, nil
+}
+
+func (r *JobRepository) DeleteAttachment(id string) error {
+	result := r.db.Delete(&domain.Attachment{}, "id = ?", id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return appErrors.ErrNotFound
+	}
+	return nil
+}
+
+func (r *JobRepository) DeleteAttachmentsByJobID(jobID string) error {
+	return r.db.Where("job_id = ?", jobID).Delete(&domain.Attachment{}).Error
+}

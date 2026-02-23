@@ -1,6 +1,25 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: job-tracker-db
+    environment:
+      POSTGRES_USER: jobuser
+      POSTGRES_PASSWORD: jobpass
+      POSTGRES_DB: jobtracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - job-tracker-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobuser -d jobtracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   jobspy-mcp:
     build:
       context: ./jobspy-mcp-server
@@ -27,13 +46,17 @@ services:
     container_name: job-tracker-backend
     ports:
       - "8080:8080"
-    volumes:
-      - ./backend/data:/app/data
     environment:
       - SERVER_PORT=8080
-      - DATABASE_PATH=/app/data/jobs.db
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=jobuser
+      - DB_PASSWORD=jobpass
+      - DB_NAME=jobtracker
       - MCP_SERVER_URL=http://jobspy-mcp:9423
     depends_on:
+      postgres:
+        condition: service_healthy
       jobspy-mcp:
         condition: service_healthy
     networks:
@@ -62,5 +85,4 @@ networks:
     driver: bridge
 
 volumes:
-  job-tracker-data:
-    driver: local
+  postgres_data:
