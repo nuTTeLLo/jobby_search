@@ -8,9 +8,9 @@ MCP_PORT=9423
 HEALTH_CHECK_URL="http://localhost:${MCP_PORT}/health"
 MAX_WAIT_SECONDS=30
 
-# PostgreSQL config
-POSTGRES_CONTAINER="job-tracker-db-dev"
-POSTGRES_PORT=5432
+# Remote PostgreSQL config
+DB_HOST=kickapoo.tailee323f.ts.net
+DB_PORT=30432
 
 # Check if required ports are available
 check_port() {
@@ -29,40 +29,7 @@ echo "Checking port availability..."
 check_port 8080 "backend" || true
 check_port 5173 "frontend" || true
 check_port $MCP_PORT "MCP" || true
-check_port 5432 "PostgreSQL" || true
 echo ""
-
-# Start PostgreSQL container for dev
-start_postgres() {
-    echo "Starting PostgreSQL container..."
-    if podman ps --format "{{.Names}}" | grep -q "^${POSTGRES_CONTAINER}$"; then
-        echo "PostgreSQL container already running"
-    elif podman ps -a --format "{{.Names}}" | grep -q "^${POSTGRES_CONTAINER}$"; then
-        echo "Starting existing PostgreSQL container..."
-        podman start "$POSTGRES_CONTAINER"
-    else
-        echo "Creating new PostgreSQL container..."
-        podman run -d --name "$POSTGRES_CONTAINER" \
-            -e POSTGRES_USER=jobuser \
-            -e POSTGRES_PASSWORD=jobpass \
-            -e POSTGRES_DB=jobtracker \
-            -p ${POSTGRES_PORT}:5432 \
-            -v ./data/postgres_data:/var/lib/postgresql/data \
-            postgres:16-alpine
-    fi
-    
-    # Wait for PostgreSQL to be ready
-    echo "Waiting for PostgreSQL..."
-    while ! podman exec "$POSTGRES_CONTAINER" pg_isready -U jobuser -d jobtracker 2>/dev/null; do
-        sleep 1
-    done
-    echo "PostgreSQL is ready!"
-}
-
-stop_postgres() {
-    echo "Stopping PostgreSQL container..."
-    podman stop "$POSTGRES_CONTAINER" 2>/dev/null || true
-}
 
 # Cleanup function - called on EXIT, SIGINT, and SIGTERM
 cleanup() {
@@ -86,9 +53,6 @@ cleanup() {
     # Stop and remove MCP container
     echo "Stopping MCP container..."
     podman stop "$CONTAINER_NAME" 2>/dev/null || podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    
-    # Stop PostgreSQL
-    stop_postgres
     
     echo "Cleanup complete"
 }
@@ -123,12 +87,9 @@ if [ $elapsed -ge $MAX_WAIT_SECONDS ]; then
     exit 1
 fi
 
-# Start PostgreSQL
-start_postgres
-
 echo "Starting backend and frontend..."
 cd backend
-go run cmd/server/main.go &
+DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" go run cmd/server/main.go &
 BACKEND_PID=$!
 cd ..
 

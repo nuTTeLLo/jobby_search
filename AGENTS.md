@@ -2,7 +2,7 @@
 
 Three components: MCP Server (`jobspy-mcp-server/`), Go Backend (`backend/`), React Frontend (`job-tracker-frontend/`).
 
-> **Important**: Use **pnpm** instead of npm for Node.js package management.
+> **Important**: Use **bun** for Node.js package management.
 
 ---
 
@@ -11,10 +11,10 @@ Three components: MCP Server (`jobspy-mcp-server/`), Go Backend (`backend/`), Re
 ### MCP Server (Node.js)
 ```bash
 cd jobspy-mcp-server
-pnpm install
-pnpm start              # Production
-pnpm dev                # Development (nodemon)
-pnpm lint / pnpm lint:fix
+bun install
+bun start              # Production
+bun dev                # Development (nodemon)
+bun lint / bun lint:fix
 ```
 
 ### Go Backend (PostgreSQL)
@@ -32,10 +32,10 @@ go fmt ./... && go vet ./... && go mod tidy
 ### React Frontend
 ```bash
 cd job-tracker-frontend
-npm install
-npm run dev     # Development
-npm run build   # Production
-npm run lint
+bun install
+bun run dev     # Development
+bun run build   # Production
+bun run lint
 ```
 
 ---
@@ -98,15 +98,15 @@ docker cp job-tracker-db:/tmp/backup.dump ./
 
 ### Environment Variables
 
-| Variable       | Default               | Description       |
-| -------------- | --------------------- | ----------------- |
-| `DB_HOST`        | localhost             | PostgreSQL host   |
-| `DB_PORT`        | 5432                  | PostgreSQL port   |
-| `DB_USER`        | jobuser               | Database user     |
-| `DB_PASSWORD`    | jobpass               | Database password |
-| `DB_NAME`        | jobtracker            | Database name     |
-| `SERVER_PORT`    | 8080                  | Backend port      |
-| `MCP_SERVER_URL` | http://localhost:9423 | MCP server URL    |
+| Variable       | Default                       | Description       |
+| -------------- | ----------------------------- | ----------------- |
+| `DB_HOST`        | kickapoo.tailee323f.ts.net    | PostgreSQL host   |
+| `DB_PORT`        | 30432                         | PostgreSQL port   |
+| `DB_USER`        | jobuser                       | Database user     |
+| `DB_PASSWORD`    | jobpass                       | Database password |
+| `DB_NAME`        | jobtracker                    | Database name     |
+| `SERVER_PORT`    | 8080                          | Backend port      |
+| `MCP_SERVER_URL` | http://localhost:9423        | MCP server URL    |
 
 ---
 

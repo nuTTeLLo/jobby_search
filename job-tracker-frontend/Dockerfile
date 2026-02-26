@@ -3,17 +3,20 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install bun
+RUN npm install -g bun
+
 # Copy package files
-COPY package.json pnpm-lock.yaml ./
+COPY package.json bun.lock ./
 
 # Install dependencies
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN pnpm run build
+RUN bun run build
 
 # Nginx stage
 FROM nginx:alpine
