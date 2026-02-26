@@ -1,19 +1,5 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: job-tracker-db
-    environment:
-      POSTGRES_USER: jobuser
-      POSTGRES_PASSWORD: jobpass
-      POSTGRES_DB: jobtracker
-    ports:
-      - "5432:5432"
-    volumes:
-      - ../data/postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jobuser -d jobtracker"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+  # PostgreSQL is now remote (kickapoo.tailee323f.ts.net:30432)
+  # No local database container needed
