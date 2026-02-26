@@ -133,7 +133,7 @@ BACKEND_PID=$!
 cd ..
 
 cd job-tracker-frontend
-pnpm run dev &
+bun run dev &
 FRONTEND_PID=$!
 cd ..
 
