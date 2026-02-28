@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   build-and-push:
@@ -51,12 +51,19 @@ jobs:
         with:
           context: ${{ matrix.context }}
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/nuttello/${{ matrix.image }}:latest
             ghcr.io/nuttello/${{ matrix.image }}:sha-${{ github.sha }}
             ghcr.io/nuttello/${{ matrix.image }}:${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Tag Latest
+        uses: EndBug/latest-tag@latest # Creates/updates 'latest' tag
+        with:
+          ref: latest
+          description: "Latest stable package build"
 
   security-scan:
     needs: build-and-push
@@ -86,12 +93,12 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/nuttello/${{ matrix.image }}:sha-${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
+          image-ref: "ghcr.io/nuttello/${{ matrix.image }}:sha-${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"

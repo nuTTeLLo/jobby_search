@@ -2,10 +2,8 @@ version: "3.8"
 
 services:
   jobspy-mcp:
-    build:
-      context: ./jobspy-mcp-server
-      dockerfile: Dockerfile
-    container_name: jobspy-mcp
+    image: ghcr.io/nuttello/jobspy-mcp-server:latest
+    container_name: jobspy-mcp-server
     ports:
       - "9423:9423"
     environment:
@@ -21,9 +19,7 @@ services:
       retries: 3
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/nuttello/job-tracker-backend:latest
     container_name: job-tracker-backend
     ports:
       - "8080:8080"
@@ -47,9 +43,7 @@ services:
       retries: 3
 
   frontend:
-    build:
-      context: ./job-tracker-frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/nuttello/job-tracker-frontend:latest
     container_name: job-tracker-frontend
     ports:
       - "5173:80"
