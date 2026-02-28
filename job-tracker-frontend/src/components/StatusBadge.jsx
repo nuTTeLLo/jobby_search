@@ -14,12 +14,13 @@ const statusLabels = {
   shortlisted: 'Shortlisted',
 };
 
-export default function StatusBadge({ status, onClick }) {
+export default function StatusBadge({ status, onClick, className }) {
   const color = statusColors[status] || statusColors.new;
   const label = statusLabels[status] || status;
 
   return (
     <span
+      className={className}
       onClick={onClick}
       style={{
         backgroundColor: color,

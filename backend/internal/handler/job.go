@@ -320,17 +320,15 @@ func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Re
 	attachment, err := h.service.GetAttachment(id)
 	if err != nil {
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
-			w.WriteHeader(http.StatusNotFound)
+			http.Error(w, "Attachment not found", http.StatusNotFound)
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", attachment.MIMEType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", attachment.FileName))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachment.FileName))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
 	w.Write(attachment.Data)
 }

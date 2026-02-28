@@ -1,62 +1,62 @@
+import { useState, useEffect } from 'react';
 import StatusBadge from './StatusBadge';
+import { API_BASE } from '../services/api';
 
 const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted'];
 
 export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
-  const getStatusMenuPosition = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    return {
-      top: rect.bottom + window.scrollY + 5,
-      left: rect.left + window.scrollX,
-    };
-  };
+  const [statusMenu, setStatusMenu] = useState(null); // { jobId, position: { top, left } }
 
   const handleStatusClick = (job, e) => {
-    const menu = document.getElementById('status-menu');
-    if (menu) {
-      menu.remove();
-    }
-
-    const newMenu = document.createElement('div');
-    newMenu.id = 'status-menu';
-    newMenu.style.position = 'absolute';
-    const pos = getStatusMenuPosition(e);
-    newMenu.style.top = `${pos.top}px`;
-    newMenu.style.left = `${pos.left}px}`;
-    newMenu.style.backgroundColor = 'white';
-    newMenu.style.border = '1px solid #dee2e6';
-    newMenu.style.borderRadius = '4px';
-    newMenu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-    newMenu.style.zIndex = '1000';
-    newMenu.style.padding = '5px 0';
-
-    STATUSES.filter((s) => s !== job.status).forEach((status) => {
-      const item = document.createElement('div');
-      item.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-      item.style.padding = '8px 16px';
-      item.style.cursor = 'pointer';
-      item.style.fontSize = '14px';
-      item.onmouseover = () => (item.style.backgroundColor = '#f8f9fa');
-      item.onmouseout = () => (item.style.backgroundColor = 'white');
-      item.onclick = () => {
-        onStatusChange(job.id, status);
-        document.body.removeChild(newMenu);
-      };
-      newMenu.appendChild(item);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setStatusMenu({
+      jobId: job.id,
+      position: {
+        top: rect.bottom + 5,
+        left: rect.left,
+      },
     });
+  };
 
-    document.body.appendChild(newMenu);
+  const handleStatusChange = (jobId, status) => {
+    onStatusChange(jobId, status);
+    setStatusMenu(null);
+  };
 
-    const closeMenu = (e) => {
-      if (!newMenu.contains(e.target)) {
-        if (document.body.contains(newMenu)) {
-          document.body.removeChild(newMenu);
-        }
-        document.removeEventListener('click', closeMenu);
+  const closeStatusMenu = () => setStatusMenu(null);
+
+  useEffect(() => {
+    if (!statusMenu) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setStatusMenu(null);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
-  };
+
+    const handleClickOutside = (e) => {
+      // Don't close if clicking on the status badge that opened the menu
+      if (e.target.closest('.status-badge')) {
+        return;
+      }
+      // Don't close if clicking inside the menu
+      if (e.target.closest('#status-menu')) {
+        return;
+      }
+      setStatusMenu(null);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    // Use setTimeout to delay adding the click listener so the current click doesn't immediately close it
+    setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [statusMenu]);
 
   if (jobs.length === 0) {
     return (
@@ -67,7 +67,7 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
   }
 
   return (
-    <div style={styles.tableWrapper}>
+    <div style={styles.tableWrapper} onClick={closeStatusMenu}>
       <table style={styles.table}>
         <thead>
           <tr>
@@ -101,7 +101,11 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
               <td style={styles.td}>
                 <StatusBadge
                   status={job.status}
-                  onClick={(e) => handleStatusClick(job, e)}
+                  className="status-badge"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStatusClick(job, e);
+                  }}
                 />
               </td>
               <td style={styles.td}>
@@ -111,9 +115,23 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
               </td>
               <td style={styles.td}>
                 {job.attachments?.length > 0 && (
-                  <span style={styles.attachmentBadge}>
-                    📎 {job.attachments.length}
-                  </span>
+                  <div style={styles.attachmentsContainer}>
+                    {job.attachments.map((attachment, idx) => (
+                      <a
+                        key={attachment.id || idx}
+                        href={`${API_BASE}/api/jobs/${job.id}/attachments/${attachment.id}/download`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.attachmentIcon}
+                        title={`${attachment.file_type}: ${attachment.file_name}`}
+                        onClick={() => {
+                          // Let the link handle the download, but could add analytics here
+                        }}
+                      >
+                        📄
+                      </a>
+                    ))}
+                  </div>
                 )}
               </td>
               <td style={styles.td}>
@@ -134,6 +152,36 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
           ))}
         </tbody>
       </table>
+      {statusMenu && (
+        <div
+          id="status-menu"
+          style={{
+            position: 'fixed',
+            top: statusMenu.position.top,
+            left: statusMenu.position.left,
+            backgroundColor: 'white',
+            border: '1px solid #dee2e6',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            padding: '5px 0',
+            minWidth: '150px',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {STATUSES.filter((s) => s !== jobs.find(j => j.id === statusMenu.jobId)?.status).map((status) => (
+            <div
+              key={status}
+              style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '14px' }}
+              onMouseOver={(e) => (e.target.style.backgroundColor = '#f8f9fa')}
+              onMouseOut={(e) => (e.target.style.backgroundColor = 'white')}
+              onClick={() => handleStatusChange(statusMenu.jobId, status)}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -141,6 +189,7 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
 const styles = {
   tableWrapper: {
     overflowX: 'auto',
+    position: 'relative',
   },
   table: {
     width: '100%',
@@ -192,16 +241,22 @@ const styles = {
     fontWeight: '500',
     textTransform: 'capitalize',
   },
-  attachmentBadge: {
+  attachmentsContainer: {
+    display: 'flex',
+    gap: '4px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  attachmentIcon: {
+    textDecoration: 'none',
+    fontSize: '16px',
+    cursor: 'pointer',
+    padding: '2px',
+    borderRadius: '3px',
+    transition: 'background-color 0.2s',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '4px',
-    padding: '2px 8px',
-    backgroundColor: '#e7f1ff',
-    color: '#0d6efd',
-    borderRadius: '4px',
-    fontSize: '12px',
-    fontWeight: '500',
+    justifyContent: 'center',
   },
   actionBtn: {
     background: 'none',

@@ -47,6 +47,27 @@ func (r *JobRepository) GetAll(filter *domain.JobFilter) ([]domain.Job, error) {
 	if err := query.Order("created_at DESC").Find(&jobs).Error; err != nil {
 		return nil, err
 	}
+
+	// Preload attachments for each job
+	if len(jobs) > 0 {
+		jobIDs := make([]string, len(jobs))
+		for i, job := range jobs {
+			jobIDs[i] = job.ID
+		}
+		var attachments []domain.Attachment
+		if err := r.db.Where("job_id IN ?", jobIDs).Find(&attachments).Error; err != nil {
+			return nil, err
+		}
+		// Attachments to jobs
+		attachmentMap := make(map[string][]domain.Attachment)
+		for _, att := range attachments {
+			attachmentMap[att.JobID] = append(attachmentMap[att.JobID], att)
+		}
+		for i := range jobs {
+			jobs[i].Attachments = attachmentMap[jobs[i].ID]
+		}
+	}
+
 	return jobs, nil
 }
 
