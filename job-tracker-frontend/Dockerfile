@@ -15,6 +15,10 @@ RUN bun install --frozen-lockfile
 # Copy source code
 COPY . .
 
+# Build arguments
+ARG VITE_API_BASE
+ENV VITE_API_BASE=${VITE_API_BASE:-/}
+
 # Build the application
 RUN bun run build
 
