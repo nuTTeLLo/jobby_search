@@ -11,5 +11,11 @@ export default defineConfig({
       "job-tracker-backend",
       "sprite-studio.tailee323f.ts.net",
     ],
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
   },
 });
