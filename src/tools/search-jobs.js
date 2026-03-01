@@ -150,15 +150,15 @@ export function searchJobsHandler(params) {
   try {
     logger.info('Starting job search with parameters', { params });
 
-    // Clean params by removing empty strings and 0 values
+    // Clean params by removing null, undefined, and empty strings only
+    // NOTE: Keep 0 values - let Zod schema handle defaults via transform
     const cleanedParams = {};
     for (const [key, value] of Object.entries(params)) {
-      // Skip null, undefined, empty strings, and 0 values
+      // Skip null, undefined, and empty strings only
       if (
         value === null ||
         value === undefined ||
-        value === '' ||
-        value === 0
+        value === ''
       ) {
         continue;
       }
