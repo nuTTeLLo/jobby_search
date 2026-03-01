@@ -2,6 +2,7 @@
 
 set -o pipefail
 
+REGISTRY="ghcr.io/nuttello"
 CONTAINER_NAME="jobspy-mcp-dev"
 IMAGE_NAME="jobspy-mcp-server"
 MCP_PORT=9423
@@ -14,15 +15,15 @@ DB_PORT=30432
 
 # Check if required ports are available
 check_port() {
-    local port=$1
-    local name=$2
-    if lsof -i :$port >/dev/null 2>&1; then
-        echo "Warning: Port $port ($name) is already in use"
-        return 1
-    else
-        echo "Port $port ($name) is available"
-        return 0
-    fi
+  local port=$1
+  local name=$2
+  if lsof -i :$port >/dev/null 2>&1; then
+    echo "Warning: Port $port ($name) is already in use"
+    return 1
+  else
+    echo "Port $port ($name) is available"
+    return 0
+  fi
 }
 
 echo "Checking port availability..."
@@ -33,28 +34,28 @@ echo ""
 
 # Cleanup function - called on EXIT, SIGINT, and SIGTERM
 cleanup() {
-    echo "Cleaning up..."
-    
-    # Kill background processes first
-    if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
-        echo "Stopping backend (PID: $BACKEND_PID)..."
-        kill -TERM "$BACKEND_PID" 2>/dev/null || true
-    fi
-    
-    if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
-        echo "Stopping frontend (PID: $FRONTEND_PID)..."
-        kill -TERM "$FRONTEND_PID" 2>/dev/null || true
-    fi
-    
-    # Wait for processes to terminate (max 5 seconds)
-    wait "$BACKEND_PID" 2>/dev/null || true
-    wait "$FRONTEND_PID" 2>/dev/null || true
-    
-    # Stop and remove MCP container
-    echo "Stopping MCP container..."
-    podman stop "$CONTAINER_NAME" 2>/dev/null || podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    
-    echo "Cleanup complete"
+  echo "Cleaning up..."
+
+  # Kill background processes first
+  if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo "Stopping backend (PID: $BACKEND_PID)..."
+    kill -TERM "$BACKEND_PID" 2>/dev/null || true
+  fi
+
+  if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
+    echo "Stopping frontend (PID: $FRONTEND_PID)..."
+    kill -TERM "$FRONTEND_PID" 2>/dev/null || true
+  fi
+
+  # Wait for processes to terminate (max 5 seconds)
+  wait "$BACKEND_PID" 2>/dev/null || true
+  wait "$FRONTEND_PID" 2>/dev/null || true
+
+  # Stop and remove MCP container
+  echo "Stopping MCP container..."
+  podman stop "$CONTAINER_NAME" 2>/dev/null || podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
+
+  echo "Cleanup complete"
 }
 
 # Set up signal handlers - cleanup runs on EXIT, SIGINT (Ctrl+C), and SIGTERM
@@ -63,33 +64,33 @@ trap cleanup EXIT INT TERM
 # Check if container already exists and handle it
 echo "Checking for existing MCP container..."
 if podman ps -a --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
-    echo "Container '$CONTAINER_NAME' already exists. Removing stale container..."
-    podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
+  echo "Container '$CONTAINER_NAME' already exists. Removing stale container..."
+  podman rm -f "$CONTAINER_NAME" 2>/dev/null || true
 fi
 
 echo "Starting MCP container..."
-podman run -d --name "$CONTAINER_NAME" -p ${MCP_PORT}:9423 "$IMAGE_NAME"
+podman run -d --name "$CONTAINER_NAME" -p ${MCP_PORT}:9423 --pull newer "$REGISTRY/$IMAGE_NAME:latest"
 
 echo "Waiting for MCP container to be healthy..."
 elapsed=0
 while [ $elapsed -lt $MAX_WAIT_SECONDS ]; do
-    if curl -sf "$HEALTH_CHECK_URL" > /dev/null 2>&1; then
-        echo "MCP container is healthy!"
-        break
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-    echo "Waiting for health check... ($elapsed/${MAX_WAIT_SECONDS}s)"
+  if curl -sf "$HEALTH_CHECK_URL" >/dev/null 2>&1; then
+    echo "MCP container is healthy!"
+    break
+  fi
+  sleep 1
+  elapsed=$((elapsed + 1))
+  echo "Waiting for health check... ($elapsed/${MAX_WAIT_SECONDS}s)"
 done
 
 if [ $elapsed -ge $MAX_WAIT_SECONDS ]; then
-    echo "Error: MCP container failed to become healthy within ${MAX_WAIT_SECONDS} seconds"
-    exit 1
+  echo "Error: MCP container failed to become healthy within ${MAX_WAIT_SECONDS} seconds"
+  exit 1
 fi
 
 echo "Starting backend and frontend..."
 cd backend
-DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" go run cmd/server/main.go &
+SERVER_PORT=8081 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" go run cmd/server/main.go &
 BACKEND_PID=$!
 cd ..
 
