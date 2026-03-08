@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"job-tracker-backend/internal/domain"
 	"job-tracker-backend/internal/repository"
@@ -169,6 +170,10 @@ func (s *JobService) UpdateJobStatus(id string, status string) (*domain.Job, err
 		return nil, err
 	}
 	job.Status = status
+
+	// If status changes, update the Updated timestamp
+	now := time.Now()
+	job.Updated = &now
 
 	if err := s.repo.Update(job); err != nil {
 		return nil, err

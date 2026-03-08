@@ -447,6 +447,7 @@ const styles = {
     fontSize: '14px',
     cursor: 'pointer',
     transition: 'all 0.2s',
+    color: '#333',
   },
   activeTab: {
     backgroundColor: '#0d6efd',

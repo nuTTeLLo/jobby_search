@@ -25,6 +25,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
     job_type: '',
     is_remote: false,
     notes: '',
+    updated: '',
   });
   const [error, setError] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -46,6 +47,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
         job_type: job.job_type || '',
         is_remote: job.is_remote || false,
         notes: job.notes || '',
+        updated: job.updated ? job.updated.split('T')[0] : '',
       });
       loadAttachments();
     }
@@ -279,6 +281,17 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
               </select>
             </div>
           </div>
+          {isEditing && formData.updated && (
+            <div style={styles.field}>
+              <label style={styles.label}>Last Updated</label>
+              <input
+                type="text"
+                value={formData.updated}
+                readOnly
+                style={{ ...styles.input, backgroundColor: '#e9ecef' }}
+              />
+            </div>
+          )}
           <div style={styles.field}>
             <label style={styles.label}>Salary</label>
             <input
@@ -479,12 +492,12 @@ const styles = {
     borderRadius: '4px',
     fontSize: '14px',
     backgroundColor: 'white',
+    color: '#333',
     boxSizing: 'border-box',
     margin: 0,
     appearance: 'none',
     WebkitAppearance: 'none',
     MozAppearance: 'none',
-    backgroundImage: 'none',
   },
   uploadBtn: {
     height: '38px',

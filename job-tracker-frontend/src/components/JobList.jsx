@@ -69,12 +69,13 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
   return (
     <div style={styles.tableWrapper} onClick={closeStatusMenu}>
       <table style={styles.table}>
-        <thead>
+          <thead>
           <tr>
             <th style={styles.th}>Job Title</th>
             <th style={styles.th}>Company</th>
             <th style={styles.th}>Location</th>
             <th style={styles.th}>Status</th>
+            <th style={styles.th}>Updated</th>
             <th style={styles.th}>Source</th>
             <th style={styles.th}>Attachments</th>
             <th style={styles.th}>Actions</th>
@@ -107,6 +108,15 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                     handleStatusClick(job, e);
                   }}
                 />
+              </td>
+              <td style={styles.td}>
+                {job.updated
+                  ? new Date(job.updated).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : '-'}
               </td>
               <td style={styles.td}>
                 <span style={styles.sourceBadge}>
