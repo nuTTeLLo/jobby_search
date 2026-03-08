@@ -30,10 +30,9 @@ type Job struct {
 	Source      string       `json:"source" gorm:"type:varchar(100)"`
 	Status      string       `json:"status" gorm:"default:'new';type:varchar(50);index"`
 	Notes       string       `json:"notes" gorm:"type:text"`
-	Updated     *time.Time   `json:"updated" gorm:"type:timestamp"`
 	Attachments []Attachment `json:"attachments" gorm:"foreignKey:JobID"`
 	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	UpdatedAt   time.Time    `json:"updated"`
 }
 
 func (j *Job) BeforeCreate(tx *gorm.DB) error {
@@ -47,32 +46,30 @@ func (j *Job) BeforeCreate(tx *gorm.DB) error {
 }
 
 type JobCreateInput struct {
-	JobTitle    string     `json:"job_title" binding:"required"`
-	CompanyName string     `json:"company_name"`
-	Location    string     `json:"location"`
-	JobURL      string     `json:"job_url" binding:"required,url"`
-	Description string     `json:"description"`
-	Salary      string     `json:"salary"`
-	JobType     string     `json:"job_type"`
-	IsRemote    bool       `json:"is_remote"`
-	Source      string     `json:"source"`
-	Notes       string     `json:"notes"`
-	Updated     *time.Time `json:"updated"`
+	JobTitle    string `json:"job_title" binding:"required"`
+	CompanyName string `json:"company_name"`
+	Location    string `json:"location"`
+	JobURL      string `json:"job_url" binding:"required,url"`
+	Description string `json:"description"`
+	Salary      string `json:"salary"`
+	JobType     string `json:"job_type"`
+	IsRemote    bool   `json:"is_remote"`
+	Source      string `json:"source"`
+	Notes       string `json:"notes"`
 }
 
 type JobUpdateInput struct {
-	JobTitle    string     `json:"job_title"`
-	CompanyName string     `json:"company_name"`
-	Location    string     `json:"location"`
-	JobURL      string     `json:"job_url"`
-	Description string     `json:"description"`
-	Salary      string     `json:"salary"`
-	JobType     string     `json:"job_type"`
-	IsRemote    bool       `json:"is_remote"`
-	Source      string     `json:"source"`
-	Status      string     `json:"status"`
-	Notes       string     `json:"notes"`
-	Updated     *time.Time `json:"updated"`
+	JobTitle    string `json:"job_title"`
+	CompanyName string `json:"company_name"`
+	Location    string `json:"location"`
+	JobURL      string `json:"job_url"`
+	Description string `json:"description"`
+	Salary      string `json:"salary"`
+	JobType     string `json:"job_type"`
+	IsRemote    bool   `json:"is_remote"`
+	Source      string `json:"source"`
+	Status      string `json:"status"`
+	Notes       string `json:"notes"`
 }
 
 type JobStatusUpdate struct {
