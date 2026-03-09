@@ -198,6 +198,9 @@ function App() {
                   <div style={styles.resultMeta}>
                     {job.job_type && <span style={styles.resultTag}>{job.job_type}</span>}
                     {job.is_remote && <span style={styles.resultTag}>Remote</span>}
+                    {job.easy_apply && (
+                      <span style={{...styles.resultTag, backgroundColor: '#28a745', color: 'white'}}>Easy Apply</span>
+                    )}
                     {job.source && (
                       <span style={styles.sourceBadge}>{job.source}</span>
                     )}
