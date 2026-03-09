@@ -96,6 +96,7 @@ func (s *JobService) CreateJob(input *domain.JobCreateInput) (*domain.Job, error
 		Salary:      input.Salary,
 		JobType:     input.JobType,
 		IsRemote:    input.IsRemote,
+		EasyApply:   input.EasyApply,
 		Source:      input.Source,
 		Status:      string(domain.StatusNew),
 		Notes:       input.Notes,
@@ -156,6 +157,7 @@ func (s *JobService) UpdateJob(id string, input *domain.JobUpdateInput) (*domain
 		job.Notes = input.Notes
 	}
 	job.IsRemote = input.IsRemote
+	job.EasyApply = input.EasyApply
 
 	if err := s.repo.Update(job); err != nil {
 		return nil, err
