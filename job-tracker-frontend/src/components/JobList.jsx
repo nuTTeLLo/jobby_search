@@ -4,8 +4,71 @@ import { API_BASE } from '../services/api';
 
 const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted'];
 
+const SOURCE_BADGES = {
+  linkedin: { backgroundColor: '#0077b5', color: 'white', label: 'LinkedIn' },
+  seek: { backgroundColor: '#ff4e00', color: 'white', label: 'Seek' },
+  indeed: { backgroundColor: '#2164f3', color: 'white', label: 'Indeed' },
+  glassdoor: { backgroundColor: '#0caa41', color: 'white', label: 'Glassdoor' },
+  other: { backgroundColor: '#6c757d', color: 'white', label: 'Other' },
+};
+
 export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
   const [statusMenu, setStatusMenu] = useState(null); // { jobId, position: { top, left } }
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIndicator = (column) => {
+    if (sortColumn !== column) return null;
+    return sortDirection === 'asc' ? '▲' : '▼';
+  };
+
+  const sortedJobs = [...jobs].sort((a, b) => {
+    if (!sortColumn) return 0;
+
+    let aVal, bVal;
+
+    switch (sortColumn) {
+      case 'Job Title':
+        aVal = a.job_title || '';
+        bVal = b.job_title || '';
+        break;
+      case 'Company':
+        aVal = a.company_name || '';
+        bVal = b.company_name || '';
+        break;
+      case 'Location':
+        aVal = a.location || '';
+        bVal = b.location || '';
+        break;
+      case 'Status':
+        aVal = a.status || '';
+        bVal = b.status || '';
+        break;
+      case 'Updated':
+        aVal = a.updated ? new Date(a.updated).getTime() : 0;
+        bVal = b.updated ? new Date(b.updated).getTime() : 0;
+        break;
+      case 'Source':
+        aVal = a.source || '';
+        bVal = b.source || '';
+        break;
+      default:
+        return 0;
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const handleStatusClick = (job, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -71,18 +134,36 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
       <table style={styles.table}>
           <thead>
           <tr>
-            <th style={styles.th}>Job Title</th>
-            <th style={styles.th}>Company</th>
-            <th style={styles.th}>Location</th>
-            <th style={styles.th}>Status</th>
-            <th style={styles.th}>Updated</th>
-            <th style={styles.th}>Source</th>
-            <th style={styles.th}>Attachments</th>
-            <th style={styles.th}>Actions</th>
+            <th style={styles.th} onClick={() => handleSort('Job Title')} title="Sort by Job Title">
+              Job Title
+              {getSortIndicator('Job Title') && <span style={styles.sortIndicator}>{getSortIndicator('Job Title')}</span>}
+            </th>
+            <th style={styles.th} onClick={() => handleSort('Company')} title="Sort by Company">
+              Company
+              {getSortIndicator('Company') && <span style={styles.sortIndicator}>{getSortIndicator('Company')}</span>}
+            </th>
+            <th style={styles.th} onClick={() => handleSort('Location')} title="Sort by Location">
+              Location
+              {getSortIndicator('Location') && <span style={styles.sortIndicator}>{getSortIndicator('Location')}</span>}
+            </th>
+            <th style={styles.th} onClick={() => handleSort('Status')} title="Sort by Status">
+              Status
+              {getSortIndicator('Status') && <span style={styles.sortIndicator}>{getSortIndicator('Status')}</span>}
+            </th>
+            <th style={styles.th} onClick={() => handleSort('Updated')} title="Sort by Updated">
+              Updated
+              {getSortIndicator('Updated') && <span style={styles.sortIndicator}>{getSortIndicator('Updated')}</span>}
+            </th>
+            <th style={styles.th} onClick={() => handleSort('Source')} title="Sort by Source">
+              Source
+              {getSortIndicator('Source') && <span style={styles.sortIndicator}>{getSortIndicator('Source')}</span>}
+            </th>
+            <th style={styles.thNonSortable}>Attachments</th>
+            <th style={styles.thNonSortable}>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {jobs.map((job) => (
+          {sortedJobs.map((job) => (
             <tr key={job.id} style={styles.tr}>
               <td style={styles.td}>
                 <a
@@ -95,6 +176,9 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                 </a>
                 {job.is_remote && (
                   <span style={styles.remoteBadge}>Remote</span>
+                )}
+                {job.easy_apply && (
+                  <span style={{...styles.remoteBadge, backgroundColor: '#28a745', color: 'white', marginLeft: '6px'}}>Easy Apply</span>
                 )}
               </td>
               <td style={styles.td}>{job.company_name || '-'}</td>
@@ -119,9 +203,28 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                   : '-'}
               </td>
               <td style={styles.td}>
-                <span style={styles.sourceBadge}>
-                  {job.source || 'manual'}
-                </span>
+                {(() => {
+                  const sourceKey = (job.source || '').toLowerCase();
+                  const badgeConfig = SOURCE_BADGES[sourceKey];
+                  if (badgeConfig) {
+                    return (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          backgroundColor: badgeConfig.backgroundColor,
+                          color: badgeConfig.color,
+                        }}
+                      >
+                        {badgeConfig.label}
+                      </span>
+                    );
+                  }
+                  return <span style={styles.sourceBadge}>manual</span>;
+                })()}
               </td>
               <td style={styles.td}>
                 {job.attachments?.length > 0 && (
@@ -217,6 +320,21 @@ const styles = {
     fontWeight: '600',
     color: '#495057',
     borderBottom: '1px solid #dee2e6',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  thNonSortable: {
+    backgroundColor: '#f8f9fa',
+    padding: '12px',
+    textAlign: 'left',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#495057',
+    borderBottom: '1px solid #dee2e6',
+  },
+  sortIndicator: {
+    marginLeft: '6px',
+    fontWeight: 'bold',
   },
   tr: {
     borderBottom: '1px solid #dee2e6',

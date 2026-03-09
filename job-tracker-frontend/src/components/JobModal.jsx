@@ -9,6 +9,16 @@ const JOB_TYPES = [
   { value: 'internship', label: 'Internship' },
 ];
 
+const SOURCES = [
+  { value: '', label: 'Select source...' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'seek', label: 'Seek' },
+  { value: 'indeed', label: 'Indeed' },
+  { value: 'glassdoor', label: 'Glassdoor' },
+  { value: 'other', label: 'Other' },
+  { value: 'manual', label: 'Manual Entry' },
+];
+
 const FILE_TYPES = [
   { value: 'resume', label: 'Resume' },
   { value: 'cover_letter', label: 'Cover Letter' },
@@ -23,7 +33,9 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
     description: '',
     salary: '',
     job_type: '',
+    source: '',
     is_remote: false,
+    easy_apply: false,
     notes: '',
     updated: '',
   });
@@ -45,7 +57,9 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
         description: job.description || '',
         salary: job.salary || '',
         job_type: job.job_type || '',
+        source: job.source || '',
         is_remote: job.is_remote || false,
+        easy_apply: job.easy_apply || false,
         notes: job.notes || '',
         updated: job.updated ? job.updated.split('T')[0] : '',
       });
@@ -280,6 +294,32 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 ))}
               </select>
             </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Source</label>
+              <select
+                name="source"
+                value={formData.source}
+                onChange={handleChange}
+                style={styles.select}
+              >
+                {SOURCES.map((source) => (
+                  <option key={source.value} value={source.value}>
+                    {source.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={styles.field}>
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={formData.easy_apply}
+                onChange={(e) => setFormData({ ...formData, easy_apply: e.target.checked })}
+                style={checkboxInputStyle}
+              />
+              Easy Apply
+            </label>
           </div>
           {isEditing && formData.updated && (
             <div style={styles.field}>
@@ -546,4 +586,19 @@ const styles = {
     fontSize: '14px',
     cursor: 'pointer',
   },
+};
+
+const checkboxLabelStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontSize: '14px',
+  color: '#495057',
+  cursor: 'pointer',
+};
+
+const checkboxInputStyle = {
+  width: '16px',
+  height: '16px',
+  cursor: 'pointer',
 };
