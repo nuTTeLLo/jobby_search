@@ -103,8 +103,8 @@ export const downloadAttachment = async (jobId, attachmentId) => {
   }
 };
 
-export const deleteAttachment = async (attachmentId) => {
-  await api.delete(`/api/jobs/attachments/${attachmentId}`);
+export const deleteAttachment = async (jobId, attachmentId) => {
+  await api.delete(`/api/jobs/${jobId}/attachments/${attachmentId}`);
 };
 
 export default api;
