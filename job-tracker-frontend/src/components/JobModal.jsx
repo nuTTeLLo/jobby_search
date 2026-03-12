@@ -133,7 +133,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
   const handleDelete = async (attachmentId) => {
     if (!confirm('Are you sure you want to delete this attachment?')) return;
     try {
-      await deleteAttachment(attachmentId);
+      await deleteAttachment(job.id, attachmentId);
       await loadAttachments();
       if (onRefresh) onRefresh();
     } catch (err) {
