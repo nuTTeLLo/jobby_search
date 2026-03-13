@@ -1,10 +1,7 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
-
-# Install bun
-RUN npm install -g bun
 
 # Copy package files
 COPY package.json bun.lock ./
