@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import StatusBadge from './StatusBadge';
-import { API_BASE } from '../services/api';
+import { API_BASE, downloadAttachment } from '../services/api';
 
 const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted'];
 
@@ -230,19 +230,14 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                 {job.attachments?.length > 0 && (
                   <div style={styles.attachmentsContainer}>
                     {job.attachments.map((attachment, idx) => (
-                      <a
+                      <button
                         key={attachment.id || idx}
-                        href={`${API_BASE}/api/jobs/${job.id}/attachments/${attachment.id}/download`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        onClick={() => downloadAttachment(job.id, attachment.id)}
                         style={styles.attachmentIcon}
                         title={`${attachment.file_type}: ${attachment.file_name}`}
-                        onClick={() => {
-                          // Let the link handle the download, but could add analytics here
-                        }}
                       >
                         📄
-                      </a>
+                      </button>
                     ))}
                   </div>
                 )}
