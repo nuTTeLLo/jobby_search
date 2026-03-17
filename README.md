@@ -1,239 +1,201 @@
-# JobSpy MCP Server
+# Job Tracker Application
 
-A Model Context Protocol (MCP) server that enables AI assistants like Claude to search for jobs across multiple job listing platforms using the [JobSpy](https://github.com/yourusername/jobspy) tool.
+A full-stack job tracking application that helps you manage your job search journey. Search for jobs across multiple platforms, track applications, store attachments, and monitor your progress — all in one place.
 
 ## Features
 
-- Search for jobs across multiple platforms (Indeed, LinkedIn, Glassdoor, etc.)
-- Filter by search terms, location, time frames, and more
-- Get structured job data that AI models can easily process
-- Format results as JSON or CSV
-- Multiple transport options: stdio for Claude integration, SSE for web clients
+- **Job Search**: Search for jobs across Indeed, LinkedIn, Glassdoor, and other platforms via the MCP server
+- **Application Tracking**: Track job applications with status (applied, interviewing, offer, rejected, etc.)
+- **Attachment Management**: Upload and store resumes, cover letters, and other documents
+- **RESTful API**: Full backend API for managing jobs and attachments
+- **Modern Frontend**: React-based user interface with React Router for navigation
+
+## Tech Stack
+
+### Backend (Go)
+- **Framework**: chi/v5 router
+- **ORM**: GORM
+- **Database**: PostgreSQL
+- **Utilities**: google/uuid
+
+### Frontend (React)
+- **Framework**: React 19
+- **Routing**: React Router 7
+- **Build Tool**: Vite 7
+- **HTTP Client**: Axios
+
+### MCP Server (Node.js)
+- **Protocol**: @modelcontextprotocol/sdk
+- **Server**: Express
+- **Logging**: Winston
+- **Validation**: Zod
+
+## Project Structure
+
+```
+jobby_search/
+├── backend/              # Go REST API server
+├── job-tracker-frontend/ # React frontend application
+├── jobspy-mcp-server/   # MCP server for job searching
+├── scripts/              # Database utility scripts
+└── docker-compose.yml   # PostgreSQL container setup
+```
 
 ## Prerequisites
 
-- Node.js 16+
-- Python 3.6+
-- The JobSpy tool installed and available
+- Go 1.21+
+- Node.js 18+
+- Bun (for Node.js package management)
+- PostgreSQL (via Docker)
+- Docker & Docker Compose
 
-## Installation
+## Installation & Setup
+
+### 1. Clone the repository
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/jobspy-mcp-server.git
+git clone <repository-url>
+cd jobby_search
+```
+
+### 2. Start PostgreSQL
+
+```bash
+cd backend
+docker-compose up -d
+```
+
+### 3. Setup MCP Server
+
+```bash
 cd jobspy-mcp-server
-
-# Install dependencies
-npm install
-
-# Make sure the JobSpy tool is properly set up
-cd ../jobSpy
-pip install -r requirements.txt
-chmod +x run.sh
+bun install
+bun start              # Production
+# or
+bun dev                # Development
 ```
 
-## Configuration
-
-The server will automatically try to locate the JobSpy script in standard locations:
-- `../jobSpy/run.sh` (relative to the server directory)
-- `./run.sh` (in the current directory)
-- `/app/run.sh` (for Docker environments)
-
-### Environment Variables
-
-You can configure the server using the following environment variables:
-
-| Environment Variable    | Description                              | Default     |
-|-------------------------|------------------------------------------|-------------|
-| `JOBSPY_DOCKER_IMAGE`   | Docker image to use for JobSpy           | `jobspy`    |
-| `JOBSPY_ACCESS_TOKEN`   | Access token for JobSpy API (if required)| none        |
-| `PORT`                  | Port for the MCP server                  | `9423`      |
-| `HOST`                  | Host for HTTP server                     | '0.0.0.0'   |
-| `ENABLE_SSE`            | Enable Server-Sent Events transport      | 0        |
-
-## Setting Up Configuration
-
-You can set these configuration values in multiple ways:
-
-### 1. Using environment variables directly
+### 4. Setup Backend
 
 ```bash
-export JOBSPY_DOCKER_IMAGE=jobspy
-export JOBSPY_HOST='0.0.0.0'
-export JOBSPY_PORT=9423
-export ENABLE_SSE=1
+cd backend
+go build -o job-tracker-backend ./cmd/server/main.go
+go run cmd/server/main.go
 ```
 
-### 2. Using a .env file
-
-Create a `.env` file in the root directory with your configuration:
-
-```
-JOBSPY_DOCKER_IMAGE=jobspy
-JOBSPY_HOST='0.0.0.0'
-JOBSPY_PORT=9423
-ENABLE_SSE=1
+To use a custom port:
+```bash
+SERVER_PORT=8081 go run cmd/server/main.go
 ```
 
-## Usage
-
-### Starting the server
+### 5. Setup Frontend
 
 ```bash
-npm start
+cd job-tracker-frontend
+bun install
+bun run dev
 ```
 
-### Connecting with Claude Desktop
+## API Endpoints
 
-Add the following to your Claude Desktop config file (typically at `~/Library/Application Support/Claude/claude_desktop_config.json`):
+### Backend REST API (Port 8080)
 
-```json
-{
-  "mcpServers": {
-    "jobspy": {
-      "command": "node",
-      "args": ["/path/to/jobspy-mcp-server/src/index.js"],
-      "env": {
-        "ENABLE_SSE": 0
-      }
-    }
-  }
-}
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/jobs` | List jobs (supports `?status=applied`) |
+| POST | `/api/jobs` | Add job manually |
+| GET | `/api/jobs/:id` | Get job by ID |
+| PUT | `/api/jobs/:id` | Update job |
+| DELETE | `/api/jobs/:id` | Delete job |
+| PATCH | `/api/jobs/:id/status` | Update job status |
+| POST | `/api/jobs/search` | Search via MCP and save results |
+| POST | `/api/jobs/:id/attachments` | Upload attachment |
+| GET | `/api/jobs/:id/attachments` | List attachments |
+| GET | `/api/jobs/:id/attachments/:id/download` | Download attachment |
+| DELETE | `/api/jobs/:id/attachments/:id` | Delete attachment |
+| GET | `/health` | Health check |
 
-### Using with Web Clients (SSE Transport)
+### MCP Server API (Port 9423)
 
-The server exposes HTTP endpoints that allow web applications to interact with the JobSpy MCP server:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api` | POST | Search jobs via JobSpy |
+| `/health` | GET | Health check |
+| `/sse` | GET | SSE transport |
+| `/messages` | POST | SSE message handling |
 
-- **Connect for updates**: `GET /mcp/connect`
-  - Establishes a Server-Sent Events (SSE) connection for real-time updates
-  - Returns progress updates and job search results
+## Environment Variables
 
-- **Send requests**: `POST /mcp/request`
-  - Accepts tool invocation requests in MCP format
-  - Returns tool responses
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_HOST` | kickapoo.tailee323f.ts.net | PostgreSQL host |
+| `DB_PORT` | 30432 | PostgreSQL port |
+| `DB_USER` | jobuser | Database user |
+| `DB_PASSWORD` | jobpass | Database password |
+| `DB_NAME` | jobtracker | Database name |
+| `SERVER_PORT` | 8080 | Backend server port |
+| `MCP_SERVER_URL` | http://localhost:9423 | MCP server URL |
 
-Example JavaScript client for browser:
+## Database Management
 
-```javascript
-// Connect to SSE endpoint
-const eventSource = new EventSource('http://localhost:9423/mcp/connect');
-
-// Listen for updates
-eventSource.onmessage = function(event) {
-  const data = JSON.parse(event.data);
-  console.log('Received update:', data);
-  
-  // Handle progress updates
-  if (data.type === 'progress') {
-    updateProgressBar(data.progress);
-  }
-};
-
-// Send a search request
-async function searchJobs() {
-  const response = await fetch('http://localhost:9423/mcp/request', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      tool: 'search_jobs',
-      params: {
-        search_term: 'software engineer',
-        location: 'San Francisco, CA',
-        site_names: 'indeed,linkedin'
-      }
-    })
-  });
-  
-  return await response.json();
-}
-```
-
-### API Usage
-
-The server exposes the following endpoints:
-
-#### Search Jobs
-
-```
-GET /search
-```
-
-Query parameters:
-- `site_names`: Comma-separated list of job sites to search
-- `search_term`: Term to search for
-- `location`: Job location
-- And other JobSpy parameters as needed
-
-### Available Tools
-
-#### search_jobs
-
-Searches for jobs across various job listing websites.
-
-**Parameters:**
-
-| Parameter | Type | Description | Default |
-|-----------|------|-------------|---------|
-| site_names | string | Comma-separated list of job sites to search (indeed,linkedin,zip_recruiter,glassdoor,google,bayt,naukri) | "indeed" |
-| search_term | string | Search term for jobs | "software engineer" |
-| location | string | Location for job search | "San Francisco, CA" |
-| google_search_term | string | Google specific search term | null |
-| results_wanted | integer | Number of results wanted | 20 |
-| hours_old | integer | How many hours old the jobs can be | 72 |
-| country_indeed | string | Country for Indeed search | "USA" |
-| linkedin_fetch_description | boolean | Whether to fetch LinkedIn job descriptions (slower) | false |
-| format | string | Output format (json or csv) | "json" |
-| output | string | Output filename without extension | "jobs" |
-
-**Example usage with Claude:**
-
-```
-I need to find senior software engineer jobs in Boston posted in the last 24 hours on both LinkedIn and Indeed.
-```
-
-## Docker Support
-
-A Dockerfile is provided to containerize the MCP server:
+### Backup
 
 ```bash
-# Build the Docker image
-docker build -t jobspy-mcp-server .
+pg_dump -h localhost -U jobuser -d jobtracker -Fc -f jobtracker_backup.dump
 
-# Run the container
-docker run -p 9423:9423 jobspy-mcp-server
+# Or use the provided script
+./scripts/backup.sh
 ```
 
-## Development
-
-### Running in development mode
+### Restore
 
 ```bash
-npm run dev
+pg_restore -h localhost -U jobuser -d jobtracker -c jobtracker_backup.dump
+
+# Or use the provided script
+./scripts/restore.sh backups/jobtracker_20240220.dump
 ```
 
-### Running tests
+### Via Docker
 
 ```bash
-npm test
+docker exec -it job-tracker-db pg_dump -U jobuser -d jobtracker -Fc -f /tmp/backup.dump
+docker cp job-tracker-db:/tmp/backup.dump ./
 ```
 
+## Development Commands
+
+### MCP Server
 ```bash
-curl -X POST "http://localhost:9423/api" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "method": "search_jobs",
-    "params": {
-      "search_term": "software engineer",
-      "location": "San Francisco, CA",
-      "site_names": "indeed,linkedin",
-      "results_wanted": 10,
-      "format": "json"
-    }
-  }'
-```  
+cd jobspy-mcp-server
+bun install
+bun start              # Production
+bun dev                # Development
+bun lint / bun lint:fix
+```
+
+### Go Backend
+```bash
+cd backend
+go build -o job-tracker-backend ./cmd/server/main.go
+go run cmd/server/main.go
+go test ./...
+go fmt ./... && go vet ./... && go mod tidy
+```
+
+### React Frontend
+```bash
+cd job-tracker-frontend
+bun install
+bun run dev
+bun run build
+bun run lint
+```
+
+## Credits
+
+- [JobSpy](https://github.com/speedyapply/JobSpy) - Python library for searching jobs across Indeed, LinkedIn, Glassdoor, Google, ZipRecruiter & more
+- [JobSpy MCP Server](https://github.com/borgius/jobspy-mcp-server) - Model Context Protocol server this project was forked from
 
 ## License
 
