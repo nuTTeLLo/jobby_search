@@ -19,6 +19,7 @@ const (
 
 type Job struct {
 	ID          string       `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID      string       `json:"user_id" gorm:"type:varchar(36);index"`
 	JobTitle    string       `json:"job_title" gorm:"not null;type:varchar(500)"`
 	CompanyName string       `json:"company_name" gorm:"type:varchar(500)"`
 	Location    string       `json:"location" gorm:"type:varchar(500)"`
@@ -82,6 +83,7 @@ type JobStatusUpdate struct {
 type JobFilter struct {
 	Status string `query:"status"`
 	Source string `query:"source"`
+	UserID string
 }
 
 // Attachment represents a file attachment (resume/cover letter) for a job

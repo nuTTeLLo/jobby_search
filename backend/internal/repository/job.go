@@ -20,9 +20,9 @@ func (r *JobRepository) Create(job *domain.Job) error {
 	return r.db.Create(job).Error
 }
 
-func (r *JobRepository) GetByID(id string) (*domain.Job, error) {
+func (r *JobRepository) GetByID(id, userID string) (*domain.Job, error) {
 	var job domain.Job
-	if err := r.db.First(&job, "id = ?", id).Error; err != nil {
+	if err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&job).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, appErrors.ErrNotFound
 		}
@@ -36,6 +36,9 @@ func (r *JobRepository) GetAll(filter *domain.JobFilter) ([]domain.Job, error) {
 	query := r.db.Model(&domain.Job{})
 
 	if filter != nil {
+		if filter.UserID != "" {
+			query = query.Where("user_id = ?", filter.UserID)
+		}
 		if filter.Status != "" {
 			query = query.Where("status = ?", filter.Status)
 		}
@@ -75,8 +78,8 @@ func (r *JobRepository) Update(job *domain.Job) error {
 	return r.db.Save(job).Error
 }
 
-func (r *JobRepository) Delete(id string) error {
-	result := r.db.Delete(&domain.Job{}, "id = ?", id)
+func (r *JobRepository) Delete(id, userID string) error {
+	result := r.db.Delete(&domain.Job{}, "id = ? AND user_id = ?", id, userID)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -86,9 +89,9 @@ func (r *JobRepository) Delete(id string) error {
 	return nil
 }
 
-func (r *JobRepository) ExistsByURL(url string) (bool, error) {
+func (r *JobRepository) ExistsByURL(url, userID string) (bool, error) {
 	var count int64
-	if err := r.db.Model(&domain.Job{}).Where("job_url = ?", url).Count(&count).Error; err != nil {
+	if err := r.db.Model(&domain.Job{}).Where("job_url = ? AND user_id = ?", url, userID).Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count > 0, nil

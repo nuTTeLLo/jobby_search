@@ -78,8 +78,8 @@ type MCPJob struct {
 	Source          string  `json:"source"`
 }
 
-func (s *JobService) CreateJob(input *domain.JobCreateInput) (*domain.Job, error) {
-	exists, err := s.repo.ExistsByURL(input.JobURL)
+func (s *JobService) CreateJob(userID string, input *domain.JobCreateInput) (*domain.Job, error) {
+	exists, err := s.repo.ExistsByURL(input.JobURL, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +88,7 @@ func (s *JobService) CreateJob(input *domain.JobCreateInput) (*domain.Job, error
 	}
 
 	job := &domain.Job{
+		UserID:      userID,
 		JobTitle:    input.JobTitle,
 		CompanyName: input.CompanyName,
 		Location:    input.Location,
@@ -112,16 +113,20 @@ func (s *JobService) CreateJob(input *domain.JobCreateInput) (*domain.Job, error
 	return job, nil
 }
 
-func (s *JobService) GetJob(id string) (*domain.Job, error) {
-	return s.repo.GetByID(id)
+func (s *JobService) GetJob(userID, id string) (*domain.Job, error) {
+	return s.repo.GetByID(id, userID)
 }
 
-func (s *JobService) GetAllJobs(filter *domain.JobFilter) ([]domain.Job, error) {
+func (s *JobService) GetAllJobs(userID string, filter *domain.JobFilter) ([]domain.Job, error) {
+	if filter == nil {
+		filter = &domain.JobFilter{}
+	}
+	filter.UserID = userID
 	return s.repo.GetAll(filter)
 }
 
-func (s *JobService) UpdateJob(id string, input *domain.JobUpdateInput) (*domain.Job, error) {
-	job, err := s.repo.GetByID(id)
+func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) (*domain.Job, error) {
+	job, err := s.repo.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -165,8 +170,8 @@ func (s *JobService) UpdateJob(id string, input *domain.JobUpdateInput) (*domain
 	return job, nil
 }
 
-func (s *JobService) UpdateJobStatus(id string, status string) (*domain.Job, error) {
-	job, err := s.repo.GetByID(id)
+func (s *JobService) UpdateJobStatus(userID, id string, status string) (*domain.Job, error) {
+	job, err := s.repo.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +183,8 @@ func (s *JobService) UpdateJobStatus(id string, status string) (*domain.Job, err
 	return job, nil
 }
 
-func (s *JobService) DeleteJob(id string) error {
-	return s.repo.Delete(id)
+func (s *JobService) DeleteJob(userID, id string) error {
+	return s.repo.Delete(id, userID)
 }
 
 type SearchResult struct {
@@ -187,7 +192,7 @@ type SearchResult struct {
 	IsSaved bool `json:"is_saved"`
 }
 
-func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) {
+func (s *JobService) SearchJobs(userID string, params MCPSearchParams) ([]SearchResult, error) {
 	reqBody := MCPSearchRequest{
 		Method: "search_jobs",
 		Params: params,
@@ -210,7 +215,6 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 		return nil, fmt.Errorf("MCP server returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Read body first
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
@@ -224,7 +228,6 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 	var results []SearchResult
 	seenURLs := make(map[string]bool)
 	for _, mcpJob := range mcpResp.Jobs {
-		// Check multiple field names for URL and title
 		jobURL := mcpJob.JobURL
 		if jobURL == "" {
 			jobURL = mcpJob.JobURLDirect
@@ -233,7 +236,6 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 			jobURL = mcpJob.URL
 		}
 
-		// Skip duplicate URLs only if URL is not empty
 		if jobURL != "" {
 			if seenURLs[jobURL] {
 				continue
@@ -241,7 +243,6 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 			seenURLs[jobURL] = true
 		}
 
-		// Use title from various possible fields
 		jobTitle := mcpJob.JobTitle
 		if jobTitle == "" {
 			jobTitle = mcpJob.Title
@@ -250,7 +251,6 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 			jobTitle = mcpJob.Summary
 		}
 
-		// Skip if no title
 		if jobTitle == "" {
 			continue
 		}
@@ -265,10 +265,9 @@ func (s *JobService) SearchJobs(params MCPSearchParams) ([]SearchResult, error) 
 			salary = fmt.Sprintf("%.0f-%.0f", mcpJob.MinAmount, mcpJob.MaxAmount)
 		}
 
-		// Check if job already exists in database
 		isSaved := false
 		if jobURL != "" {
-			exists, err := s.repo.ExistsByURL(jobURL)
+			exists, err := s.repo.ExistsByURL(jobURL, userID)
 			if err == nil && exists {
 				isSaved = true
 			}
@@ -307,6 +306,7 @@ var allowedMIMETypes = map[string]bool{
 
 type AttachmentInput struct {
 	JobID    string
+	UserID   string
 	FileName string
 	FileType string // "resume" or "cover_letter"
 	MIMEType string
@@ -314,23 +314,20 @@ type AttachmentInput struct {
 }
 
 func (s *JobService) CreateAttachment(input *AttachmentInput) (*domain.Attachment, error) {
-	// Validate file type
 	if input.FileType != AllowedFileTypeResume && input.FileType != AllowedFileTypeCoverLetter {
 		return nil, fmt.Errorf("invalid file type: %s (must be 'resume' or 'cover_letter')", input.FileType)
 	}
 
-	// Validate MIME type
 	if !allowedMIMETypes[input.MIMEType] {
 		return nil, fmt.Errorf("invalid MIME type: %s (allowed: application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document)", input.MIMEType)
 	}
 
-	// Validate file size
 	if int64(len(input.Data)) > MaxFileSize {
 		return nil, fmt.Errorf("file too large: max size is 10MB")
 	}
 
-	// Verify job exists
-	_, err := s.repo.GetByID(input.JobID)
+	// Verify job exists and belongs to this user
+	_, err := s.repo.GetByID(input.JobID, input.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("job not found: %w", err)
 	}

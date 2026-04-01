@@ -9,6 +9,26 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const getJobs = async (status = '') => {
   const params = status ? { status } : {};
   const response = await api.get('/api/jobs', { params });
@@ -105,6 +125,21 @@ export const downloadAttachment = async (jobId, attachmentId) => {
 
 export const deleteAttachment = async (jobId, attachmentId) => {
   await api.delete(`/api/jobs/${jobId}/attachments/${attachmentId}`);
+};
+
+export const registerUser = async ({ email, password }) => {
+  const res = await api.post('/api/auth/register', { email, password });
+  return res.data.data;
+};
+
+export const loginUser = async ({ email, password }) => {
+  const res = await api.post('/api/auth/login', { email, password });
+  return res.data.data;
+};
+
+export const changePassword = async ({ current_password, new_password }) => {
+  const res = await api.post('/api/auth/change-password', { current_password, new_password });
+  return res.data;
 };
 
 export default api;

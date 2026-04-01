@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"job-tracker-backend/internal/domain"
+	appMiddleware "job-tracker-backend/internal/middleware"
 	"job-tracker-backend/internal/service"
 	appErrors "job-tracker-backend/pkg/errors"
 	"job-tracker-backend/pkg/response"
@@ -48,15 +49,18 @@ func (h *JobHandler) Routes() http.Handler {
 }
 
 func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+
 	filter := &domain.JobFilter{
 		Status: r.URL.Query().Get("status"),
 		Source: r.URL.Query().Get("source"),
 	}
 
-	jobs, err := h.service.GetAllJobs(filter)
+	jobs, err := h.service.GetAllJobs(userID, filter)
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
@@ -64,123 +68,146 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		jobs = []domain.Job{}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(jobs))
 }
 
 func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+
 	var input domain.JobCreateInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
 		return
 	}
 
-	job, err := h.service.CreateJob(&input)
+	job, err := h.service.CreateJob(userID, &input)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrAlreadyExists {
-			json.NewEncoder(w).Encode(response.Error("Job with this URL already exists"))
 			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(response.Error("Job with this URL already exists"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(job))
 }
 
 func (h *JobHandler) GetJob(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
-	job, err := h.service.GetJob(id)
+	job, err := h.service.GetJob(userID, id)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(job))
 }
 
 func (h *JobHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
 	var input domain.JobUpdateInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
 		return
 	}
 
-	job, err := h.service.UpdateJob(id, &input)
+	job, err := h.service.UpdateJob(userID, id, &input)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(job))
 }
 
 func (h *JobHandler) UpdateJobStatus(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
 	var input domain.JobStatusUpdate
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
 		return
 	}
 
-	job, err := h.service.UpdateJobStatus(id, input.Status)
+	job, err := h.service.UpdateJobStatus(userID, id, input.Status)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(job))
 }
 
 func (h *JobHandler) DeleteJob(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
-	err := h.service.DeleteJob(id)
+	err := h.service.DeleteJob(userID, id)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Job not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.SuccessMessage("Job deleted successfully"))
 }
 
 func (h *JobHandler) SearchJobs(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+
 	var params service.MCPSearchParams
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
 		return
 	}
 
@@ -197,13 +224,15 @@ func (h *JobHandler) SearchJobs(w http.ResponseWriter, r *http.Request) {
 		params.Format = "json"
 	}
 
-	jobs, err := h.service.SearchJobs(params)
+	jobs, err := h.service.SearchJobs(userID, params)
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error("Failed to search jobs: " + err.Error()))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error("Failed to search jobs: " + err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(map[string]interface{}{
 		"count": len(jobs),
 		"jobs":  jobs,
@@ -223,19 +252,21 @@ func (h *AttachmentHandler) Routes() http.Handler {
 }
 
 func (h *AttachmentHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	jobID := chi.URLParam(r, "id")
 
-	// Parse multipart form
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10MB max
-		json.NewEncoder(w).Encode(response.Error("Failed to parse form data"))
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Failed to parse form data"))
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error("Failed to get file from form"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Failed to get file from form"))
 		return
 	}
 	defer file.Close()
@@ -247,13 +278,15 @@ func (h *AttachmentHandler) UploadAttachment(w http.ResponseWriter, r *http.Requ
 
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error("Failed to read file"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error("Failed to read file"))
 		return
 	}
 
 	input := &service.AttachmentInput{
 		JobID:    jobID,
+		UserID:   userID,
 		FileName: header.Filename,
 		FileType: fileType,
 		MIMEType: header.Header.Get("Content-Type"),
@@ -262,13 +295,14 @@ func (h *AttachmentHandler) UploadAttachment(w http.ResponseWriter, r *http.Requ
 
 	attachment, err := h.service.CreateAttachment(input)
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
-	// Return without the binary data
 	attachment.Data = nil
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(attachment))
 }
 
@@ -277,12 +311,12 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 
 	attachments, err := h.service.GetAttachmentsByJobID(jobID)
 	if err != nil {
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
-	// Don't send binary data in list
 	for i := range attachments {
 		attachments[i].Data = nil
 	}
@@ -291,6 +325,7 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 		attachments = []domain.Attachment{}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(attachments))
 }
 
@@ -299,18 +334,19 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 
 	attachment, err := h.service.GetAttachment(id)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
-	// Don't send binary data in get
 	attachment.Data = nil
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(attachment))
 }
 
@@ -338,15 +374,17 @@ func (h *AttachmentHandler) DeleteAttachment(w http.ResponseWriter, r *http.Requ
 
 	err := h.service.DeleteAttachment(id)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
-			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
 			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
 			return
 		}
-		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.SuccessMessage("Attachment deleted successfully"))
 }

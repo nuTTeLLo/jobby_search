@@ -10,8 +10,13 @@ HEALTH_CHECK_URL="http://localhost:${MCP_PORT}/health"
 MAX_WAIT_SECONDS=30
 
 # Remote PostgreSQL config
-DB_HOST=kickapoo.tailee323f.ts.net
-DB_PORT=30432
+DB_HOST=postgres.tailee323f.ts.net
+DB_PORT=5432
+DB_USER=jobuser
+DB_PASSWORD="XigEezPc@jFkDg3tN2.@"
+DB_NAME=jobtracker
+JWT_SECRET=dcd288fb-394d-4776-9e2c-ce99ceee3b48
+SEED_USER_PASSWORD=ikWYNccF8LVssNPfiW-C
 
 # Check if required ports are available
 check_port() {
@@ -90,7 +95,7 @@ fi
 
 echo "Starting backend and frontend..."
 cd backend
-SERVER_PORT=8081 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" go run cmd/server/main.go &
+SERVER_PORT=8081 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" JWT_SECRET="$JWT_SECRET" SEED_USER_PASSWORD="$SEED_USER_PASSWORD" go run cmd/server/main.go &
 BACKEND_PID=$!
 cd ..
 
