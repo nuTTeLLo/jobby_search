@@ -13,6 +13,8 @@ type Config struct {
 	DBUser           string
 	DBPassword       string
 	DBName           string
+	DBSSLMode        string
+	AllowedOrigins   string
 	MCPServerURL     string
 	JWTSecret        string
 	JWTExpiration    time.Duration
@@ -27,6 +29,8 @@ func Load() *Config {
 		DBUser:           getEnv("DB_USER", "jobuser"),
 		DBPassword:       getEnv("DB_PASSWORD", "jobpass"),
 		DBName:           getEnv("DB_NAME", "jobtracker"),
+		DBSSLMode:        getEnv("DB_SSLMODE", "require"),
+		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "http://localhost:5173"),
 		MCPServerURL:     getEnv("MCP_SERVER_URL", "http://localhost:9423"),
 		JWTSecret:        getEnv("JWT_SECRET", ""),
 		JWTExpiration:    24 * time.Hour,

@@ -9,7 +9,7 @@ export default defineConfig({
     allowedHosts: [
       "localhost",
       "job-tracker-backend",
-      "sprite-studio.tailee323f.ts.net",
+      ...(process.env.VITE_EXTRA_HOSTS ? process.env.VITE_EXTRA_HOSTS.split(",") : []),
     ],
     proxy: {
       "/api": {

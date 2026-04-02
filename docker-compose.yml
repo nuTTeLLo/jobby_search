@@ -25,11 +25,13 @@ services:
       - "8080:8080"
     environment:
       - SERVER_PORT=8080
-      - DB_HOST=kickapoo.tailee323f.ts.net
-      - DB_PORT=30432
-      - DB_USER=jobuser
-      - DB_PASSWORD=jobpass
-      - DB_NAME=jobtracker
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-jobuser}
+      - DB_PASSWORD=${DB_PASSWORD:-jobpass}
+      - DB_NAME=${DB_NAME:-jobtracker}
+      - DB_SSLMODE=${DB_SSLMODE:-require}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - MCP_SERVER_URL=http://jobspy-mcp:9423
     depends_on:
       jobspy-mcp:

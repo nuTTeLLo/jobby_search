@@ -307,7 +307,15 @@ func (h *AttachmentHandler) UploadAttachment(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	jobID := chi.URLParam(r, "id")
+
+	if _, err := h.service.GetJob(userID, jobID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(response.Error("Job not found"))
+		return
+	}
 
 	attachments, err := h.service.GetAttachmentsByJobID(jobID)
 	if err != nil {
@@ -330,6 +338,7 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
 	attachment, err := h.service.GetAttachment(id)
@@ -345,12 +354,20 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if _, err := h.service.GetJob(userID, attachment.JobID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+		return
+	}
+
 	attachment.Data = nil
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(attachment))
 }
 
 func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
 	attachment, err := h.service.GetAttachment(id)
@@ -363,6 +380,11 @@ func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if _, err := h.service.GetJob(userID, attachment.JobID); err != nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", attachment.MIMEType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachment.FileName))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
@@ -370,9 +392,10 @@ func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Re
 }
 
 func (h *AttachmentHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
-	err := h.service.DeleteAttachment(id)
+	attachment, err := h.service.GetAttachment(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		if err == appErrors.ErrNotFound {
@@ -380,6 +403,20 @@ func (h *AttachmentHandler) DeleteAttachment(w http.ResponseWriter, r *http.Requ
 			json.NewEncoder(w).Encode(response.Error("Attachment not found"))
 			return
 		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		return
+	}
+
+	if _, err := h.service.GetJob(userID, attachment.JobID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+		return
+	}
+
+	if err := h.service.DeleteAttachment(id); err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(response.Error(err.Error()))
 		return
