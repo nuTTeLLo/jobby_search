@@ -9,6 +9,8 @@ Jobby Search is a full-stack job tracking application with three services:
 - **Frontend**: React SPA (port 5173)
 - **MCP Server**: Node.js job search service via JobSpy (port 9423)
 
+> **Important**: Use **bun** for Node.js package management.
+
 ## Commands
 
 ### Backend (Go)
@@ -26,20 +28,19 @@ go mod tidy                 # clean up dependencies
 ### Frontend (React + Vite)
 ```bash
 cd job-tracker-frontend
-npm install                 # install dependencies
-npm run dev                 # start dev server
-npm run build               # production build
-npm run lint                # lint
-npm run preview             # preview production build
+bun install
+bun run dev                 # start dev server
+bun run build               # production build
+bun run lint
 ```
 
 ### MCP Server (Node.js)
 ```bash
-npm install                 # install dependencies
-npm run dev                 # dev with nodemon
-npm start                   # production start
-npm run lint                # lint
-npm run lint:fix            # auto-fix lint issues
+cd jobspy-mcp-server
+bun install
+bun start                   # production
+bun dev                     # development (nodemon)
+bun lint / bun lint:fix
 ```
 
 ### Docker
@@ -103,13 +104,41 @@ src/
 
 Supports SSE and Stdio transports. SSE enabled by default (`ENABLE_SSE=1`).
 
+## API Endpoints
+
+### Backend REST API (Port 8080)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/jobs` | List jobs (`?status=applied`) |
+| POST | `/api/jobs` | Add job manually |
+| GET | `/api/jobs/:id` | Get job by ID |
+| PUT | `/api/jobs/:id` | Update job |
+| DELETE | `/api/jobs/:id` | Delete job |
+| PATCH | `/api/jobs/:id/status` | Update job status |
+| POST | `/api/jobs/search` | Search via MCP and save |
+| POST | `/api/jobs/:id/attachments` | Upload attachment |
+| GET | `/api/jobs/:id/attachments` | List attachments |
+| GET | `/api/jobs/:id/attachments/:id/download` | Download attachment |
+| DELETE | `/api/jobs/:id/attachments/:id` | Delete attachment |
+| GET | `/health` | Health check |
+
+### MCP Server API (Port 9423)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api` | Search jobs via JobSpy |
+| GET | `/health` | Health check |
+| GET | `/sse` | SSE transport |
+| POST | `/messages` | SSE message handling |
+
 ## Environment Variables
 
 **Backend** (defaults shown):
 ```
 SERVER_PORT=8080
-DB_HOST=localhost
-DB_PORT=5432
+DB_HOST=<your-db-host>
+DB_PORT=<your-db-port>
 DB_USER=jobuser
 DB_PASSWORD=jobpass
 DB_NAME=jobtracker
@@ -127,8 +156,58 @@ JOBSPY_HOST=0.0.0.0
 ENABLE_SSE=1
 ```
 
+## Database
+
+### Backup & Restore
+```bash
+# Backup (BYTEA columns included)
+pg_dump -h localhost -U jobuser -d jobtracker -Fc -f jobtracker_backup.dump
+
+# Restore
+pg_restore -h localhost -U jobuser -d jobtracker -c jobtracker_backup.dump
+
+# Or use scripts
+./scripts/backup.sh
+./scripts/restore.sh backups/jobtracker_20240220.dump
+
+# Docker (if pg_dump not installed)
+docker exec -it job-tracker-db pg_dump -U jobuser -d jobtracker -Fc -f /tmp/backup.dump
+docker cp job-tracker-db:/tmp/backup.dump ./
+```
+
 ## Code Style
 
-- **Go**: tabs for indentation, `gofmt` enforced, camelCase for vars/funcs, PascalCase for exported
-- **JavaScript/React**: 2-space indentation, Airbnb ESLint config
-- **Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`
+### Go Backend
+
+| Aspect | Rule |
+|--------|------|
+| **Indentation** | Tabs |
+| **Imports** | stdlib → third-party → project |
+| **Packages** | lowercase (`service`, `repository`) |
+| **Types/Functions** | PascalCase (`JobService`), camelCase (`createJob`) |
+| **DB Columns** | snake_case in tags, PascalCase in structs |
+| **Error Handling** | Return errors last; use `fmt.Errorf("context: %w", err)` |
+| **GORM** | Use `*gorm.DB` in `BeforeCreate` hook for UUIDs |
+
+### React Frontend (JavaScript/JSX)
+
+| Aspect | Rule |
+|--------|------|
+| **Indentation** | 2 spaces |
+| **Quotes/Semicolons** | Single quotes, required |
+| **Components** | PascalCase files (`.jsx`), camelCase functions |
+| **Constants** | UPPER_SNAKE_CASE |
+| **API** | Use axios, service modules in `src/services/` |
+
+### MCP Server (Node.js)
+
+| Aspect | Rule |
+|--------|------|
+| **Indentation** | 2 spaces |
+| **Quotes/Semicolons** | Single quotes, required |
+| **Modules** | ES6 `import`/`export` (no CommonJS) |
+| **Validation** | Zod schemas in `src/schemas/` |
+| **Errors** | Return error objects, never throw |
+| **Logging** | Use winston logger |
+
+**Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`

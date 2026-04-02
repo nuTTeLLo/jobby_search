@@ -1,5 +1,10 @@
+.DS_Store
+.worktrees
+.env
+.env.local
+.env.*.local
+*/.env
+*/.env.local
 node_modules
-.node_modules.nosync
 dist
 tmp
-.DS_Store
