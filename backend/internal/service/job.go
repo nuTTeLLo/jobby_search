@@ -99,6 +99,12 @@ func (s *JobService) CreateJob(userID string, input *domain.JobCreateInput) (*do
 		IsRemote:    input.IsRemote,
 		EasyApply:   input.EasyApply,
 		Source:      input.Source,
+		ViaRecruiter: func() bool {
+			if input.ViaRecruiter != nil {
+				return *input.ViaRecruiter
+			}
+			return false
+		}(),
 		Status:      string(domain.StatusNew),
 		Notes:       input.Notes,
 	}
@@ -163,6 +169,9 @@ func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) 
 	}
 	job.IsRemote = input.IsRemote
 	job.EasyApply = input.EasyApply
+	if input.ViaRecruiter != nil {
+		job.ViaRecruiter = *input.ViaRecruiter
+	}
 
 	if err := s.repo.Update(job); err != nil {
 		return nil, err

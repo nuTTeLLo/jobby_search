@@ -36,6 +36,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
     source: '',
     is_remote: false,
     easy_apply: false,
+    via_recruiter: false,
     notes: '',
     updated: '',
   });
@@ -60,6 +61,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
         source: job.source || '',
         is_remote: job.is_remote || false,
         easy_apply: job.easy_apply || false,
+        via_recruiter: job.via_recruiter || false,
         notes: job.notes || '',
         updated: job.updated ? job.updated.split('T')[0] : '',
       });
@@ -319,6 +321,17 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 style={checkboxInputStyle}
               />
               Easy Apply
+            </label>
+          </div>
+          <div style={styles.field}>
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={formData.via_recruiter}
+                onChange={(e) => setFormData({ ...formData, via_recruiter: e.target.checked })}
+                style={checkboxInputStyle}
+              />
+              Via Recruiter
             </label>
           </div>
           {isEditing && formData.updated && (

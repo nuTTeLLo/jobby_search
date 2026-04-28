@@ -180,6 +180,9 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                 {job.easy_apply && (
                   <span style={{...styles.remoteBadge, backgroundColor: '#28a745', color: 'white', marginLeft: '6px'}}>Easy Apply</span>
                 )}
+                {job.via_recruiter && (
+                  <span style={{...styles.remoteBadge, backgroundColor: '#6f42c1', color: 'white', marginLeft: '6px'}}>Recruiter</span>
+                )}
               </td>
               <td style={styles.td}>{job.company_name || '-'}</td>
               <td style={styles.td}>{job.location || '-'}</td>
