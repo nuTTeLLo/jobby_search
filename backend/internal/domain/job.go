@@ -27,8 +27,9 @@ type Job struct {
 	Description string       `json:"description" gorm:"type:text"`
 	Salary      string       `json:"salary" gorm:"type:varchar(200)"`
 	JobType     string       `json:"job_type" gorm:"type:varchar(100)"`
-	IsRemote    bool         `json:"is_remote" gorm:"default:false"`
-	EasyApply   bool         `json:"easy_apply" gorm:"default:false"`
+	IsRemote     bool         `json:"is_remote" gorm:"default:false"`
+	EasyApply    bool         `json:"easy_apply" gorm:"default:false"`
+	ViaRecruiter bool         `json:"via_recruiter" gorm:"default:false"`
 	Source      string       `json:"source" gorm:"type:varchar(100)"`
 	Status      string       `json:"status" gorm:"default:'new';type:varchar(50);index"`
 	Notes       string       `json:"notes" gorm:"type:text"`
@@ -55,25 +56,27 @@ type JobCreateInput struct {
 	Description string `json:"description"`
 	Salary      string `json:"salary"`
 	JobType     string `json:"job_type"`
-	IsRemote    bool   `json:"is_remote"`
-	EasyApply   bool   `json:"easy_apply"`
-	Source      string `json:"source"`
-	Notes       string `json:"notes"`
+	IsRemote     bool  `json:"is_remote"`
+	EasyApply    bool  `json:"easy_apply"`
+	ViaRecruiter *bool `json:"via_recruiter"`
+	Source       string `json:"source"`
+	Notes        string `json:"notes"`
 }
 
 type JobUpdateInput struct {
-	JobTitle    string `json:"job_title"`
-	CompanyName string `json:"company_name"`
-	Location    string `json:"location"`
-	JobURL      string `json:"job_url"`
-	Description string `json:"description"`
-	Salary      string `json:"salary"`
-	JobType     string `json:"job_type"`
-	IsRemote    bool   `json:"is_remote"`
-	EasyApply   bool   `json:"easy_apply"`
-	Source      string `json:"source"`
-	Status      string `json:"status"`
-	Notes       string `json:"notes"`
+	JobTitle     string `json:"job_title"`
+	CompanyName  string `json:"company_name"`
+	Location     string `json:"location"`
+	JobURL       string `json:"job_url"`
+	Description  string `json:"description"`
+	Salary       string `json:"salary"`
+	JobType      string `json:"job_type"`
+	IsRemote     bool   `json:"is_remote"`
+	EasyApply    bool   `json:"easy_apply"`
+	ViaRecruiter *bool  `json:"via_recruiter"`
+	Source       string `json:"source"`
+	Status       string `json:"status"`
+	Notes        string `json:"notes"`
 }
 
 type JobStatusUpdate struct {

@@ -7,7 +7,7 @@ CONTAINER_NAME="jobspy-mcp-dev"
 IMAGE_NAME="jobspy-mcp-server"
 MCP_PORT=9423
 HEALTH_CHECK_URL="http://localhost:${MCP_PORT}/health"
-MAX_WAIT_SECONDS=30
+MAX_WAIT_SECONDS=60
 
 # Remote PostgreSQL config
 DB_HOST=postgres.tailee323f.ts.net
@@ -74,7 +74,10 @@ if podman ps -a --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
 fi
 
 echo "Starting MCP container..."
-podman run -d --name "$CONTAINER_NAME" -p ${MCP_PORT}:9423 --pull newer "$REGISTRY/$IMAGE_NAME:latest"
+if ! podman run -d --name "$CONTAINER_NAME" -p ${MCP_PORT}:9423 -e ENABLE_SSE=1 --pull newer "$REGISTRY/$IMAGE_NAME:latest"; then
+  echo "ERROR: Failed to start MCP container. Check podman logs for details." >&2
+  exit 1
+fi
 
 echo "Waiting for MCP container to be healthy..."
 elapsed=0
@@ -95,7 +98,7 @@ fi
 
 echo "Starting backend and frontend..."
 cd backend
-SERVER_PORT=8081 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" JWT_SECRET="$JWT_SECRET" SEED_USER_PASSWORD="$SEED_USER_PASSWORD" go run cmd/server/main.go &
+SERVER_PORT=8080 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" JWT_SECRET="$JWT_SECRET" SEED_USER_PASSWORD="$SEED_USER_PASSWORD" go run cmd/server/main.go &
 BACKEND_PID=$!
 cd ..
 
