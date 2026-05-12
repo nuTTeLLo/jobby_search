@@ -158,7 +158,19 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div style={styles.error}>{error}</div>}
-          
+
+          {isEditing && job?.id && (
+            <div style={styles.field}>
+              <label style={styles.label}>Job ID</label>
+              <input
+                type="text"
+                value={job.id}
+                readOnly
+                style={{ ...styles.input, backgroundColor: '#e9ecef', fontFamily: 'monospace', fontSize: '12px', color: '#6c757d' }}
+              />
+            </div>
+          )}
+
           <div style={styles.field}>
             <label style={styles.label}>Job Title *</label>
             <input
