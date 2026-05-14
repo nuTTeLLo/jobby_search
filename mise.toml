@@ -1,0 +1,3 @@
+[tasks.dev]
+description = "Start all dev services (MCP container, Go backend, React frontend)"
+run = "bash scripts/dev.sh"
