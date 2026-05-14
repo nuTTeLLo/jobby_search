@@ -33,7 +33,7 @@ type Job struct {
 	Source      string       `json:"source" gorm:"type:varchar(100)"`
 	Status      string       `json:"status" gorm:"default:'new';type:varchar(50);index"`
 	Notes       string       `json:"notes" gorm:"type:text"`
-	Attachments []Attachment `json:"attachments" gorm:"foreignKey:JobID"`
+	Attachments []Attachment `json:"attachments" gorm:"foreignKey:JobID;constraint:OnDelete:CASCADE"`
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated"`
 }
