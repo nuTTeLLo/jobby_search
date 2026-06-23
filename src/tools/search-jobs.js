@@ -175,7 +175,7 @@ export function searchJobsHandler(params) {
     const cmd = `sudo docker run jobspy ${args.join(' ')}`;
     logger.info(`Spawning process with args: ${cmd}`);
 
-    const timeout = params.timeout || 60000; // Default timeout of 60 seconds
+    const timeout = params.timeout || 300000; // Default timeout of 5 minutes
     result = execSync(cmd, { timeout }).toString();
 
     const parsedData = JSON.parse(result);
