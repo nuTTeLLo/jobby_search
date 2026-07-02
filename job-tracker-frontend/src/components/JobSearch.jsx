@@ -6,6 +6,7 @@ const SITES = [
   { value: 'zip_recruiter', label: 'ZipRecruiter' },
   { value: 'glassdoor', label: 'Glassdoor' },
   { value: 'google', label: 'Google Jobs' },
+  { value: 'seek', label: 'Seek (AU/NZ)' },
 ];
 
 const JOB_TYPES = [
@@ -18,6 +19,7 @@ const JOB_TYPES = [
 
 const COUNTRIES = [
   { value: 'australia', label: 'Australia' },
+  { value: 'new zealand', label: 'New Zealand' },
   { value: 'singapore', label: 'Singapore' },
   { value: 'usa', label: 'USA' },
 ];
@@ -32,6 +34,7 @@ export default function JobSearch({ onSearch, loading }) {
       zip_recruiter: false,
       glassdoor: false,
       google: false,
+      seek: false,
     },
     jobType: '',
     resultsWanted: 20,
