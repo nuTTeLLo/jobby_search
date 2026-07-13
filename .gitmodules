@@ -1,4 +1,4 @@
 [submodule "jobspy-mcp-server"]
 	path = jobspy-mcp-server
-	url = git@github.com:nuttello/jobspy-mcp-server.git
+	url = git@github.com:nuTTeLLo/jobspy-mcp-server.git
 	branch = job-tracker-tweaks

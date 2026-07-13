@@ -13,6 +13,17 @@ Jobby Search is a full-stack job tracking application with three services:
 
 ## Commands
 
+### Quick start (mise)
+```bash
+mise install        # toolchain: go, node, bun, python (+ .venv for JobSpy)
+mise run setup      # once: submodule init + all dependencies
+mise run dev        # backend :8081 + frontend :5173 + MCP :9423, all local processes
+```
+Individual services: `mise run backend` / `mise run frontend` / `mise run mcp`.
+The MCP server lives in the `jobspy-mcp-server/` git submodule; prod still runs the
+container images (see Docker section) — `JOBSPY_PYTHON`/`JOBSPY_SCRIPT` env vars point
+local dev at the repo venv instead of the container's `/app` layout.
+
 ### Backend (Go)
 ```bash
 cd backend

@@ -1,3 +1,60 @@
+[tools]
+go = "1.26"
+node = "24"
+bun = "1.3"
+python = "3.10"
+
+[env]
+# Backend secrets/config live in gitignored backend/.env (see backend/.env.example)
+_.file = "backend/.env"
+# Python venv for the JobSpy runner (used by the MCP server's local dev task)
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.setup]
+description = "Install dependencies for all services (run once after clone)"
+run = [
+  "git submodule update --init",
+  "go -C backend mod download",
+  "bun install --cwd job-tracker-frontend",
+  "bun install --cwd jobspy-mcp-server",
+  # mise's venv is created without pip seeded — ensurepip first, and use `python -m pip` so packages land in the venv
+  "python -m ensurepip --upgrade >/dev/null && python -m pip install -r jobspy-mcp-server/jobspy/requirements.txt",
+]
+
+[tasks.backend]
+description = "Run Go API on :8081 (the port frontend dev expects)"
+dir = "backend"
+env = { SERVER_PORT = "8081", ALLOWED_ORIGINS = "http://localhost:5173,http://sprite-studio.tailee323f.ts.net:5173" }
+run = "go run ./cmd/server/"
+
+[tasks.frontend]
+description = "Run Vite dev server on :5173"
+dir = "job-tracker-frontend"
+run = "bun run dev"
+
+[tasks.mcp]
+description = "Run MCP server locally on :9423 (JobSpy via repo venv python)"
+dir = "jobspy-mcp-server"
+env = { JOBSPY_SCRIPT = "jobspy/main.py", ENABLE_SSE = "1" }
+run = "bun dev"
+
 [tasks.dev]
-description = "Start all dev services (MCP container, Go backend, React frontend)"
-run = "bash scripts/dev.sh"
+description = "Start all dev services locally (backend + frontend + MCP)"
+depends = ["backend", "frontend", "mcp"]
+
+[tasks.test]
+description = "Run backend tests"
+dir = "backend"
+run = "go test ./..."
+
+[tasks.lint]
+description = "Lint frontend and MCP server"
+run = [
+  "bun run --cwd job-tracker-frontend lint",
+  "bun run --cwd jobspy-mcp-server lint",
+]
+
+[tasks.build]
+description = "Production build of the frontend"
+dir = "job-tracker-frontend"
+run = "bun run build"
