@@ -43,6 +43,36 @@ function JobTrackerApp() {
     }
   };
 
+  // Whether a job belongs in the currently visible list given the active tab.
+  const belongsToFilter = (job) => statusFilter === '' || job.status === statusFilter;
+
+  // Merge a created/updated job into local state without a full reload.
+  const upsertJob = (job) => {
+    setJobs((prev) => {
+      const exists = prev.some((j) => j.id === job.id);
+      if (!belongsToFilter(job)) {
+        // No longer matches the active tab — remove if present.
+        return exists ? prev.filter((j) => j.id !== job.id) : prev;
+      }
+      if (exists) {
+        // Status/update responses don't preload attachments (they come back null),
+        // so keep the ones already in state rather than clobbering them.
+        return prev.map((j) =>
+          j.id === job.id
+            ? { ...j, ...job, attachments: job.attachments ?? j.attachments }
+            : j
+        );
+      }
+      // New to this view — surface it at the top.
+      return [job, ...prev];
+    });
+  };
+
+  // Drop a deleted job from local state without a full reload.
+  const removeJob = (id) => {
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+  };
+
   const handleSearch = async (params) => {
     setSearching(true);
     try {
@@ -69,12 +99,12 @@ function JobTrackerApp() {
         is_remote: job.is_remote,
         source: job.source || 'mcp',
       };
-      await createJob(jobData);
+      const created = await createJob(jobData);
       showMessage('Job added to tracker', 'success');
       setSearchResults(prev => prev.map(j =>
         j.job_url === job.job_url ? { ...j, is_saved: true } : j
       ));
-      fetchJobs();
+      upsertJob(created);
     } catch (error) {
       if (error.response?.data?.error) {
         showMessage(error.response.data.error, 'error');
@@ -86,16 +116,17 @@ function JobTrackerApp() {
 
   const handleSaveJob = async (jobData) => {
     try {
+      let saved;
       if (editingJob) {
-        await updateJob(editingJob.id, jobData);
+        saved = await updateJob(editingJob.id, jobData);
         showMessage('Job updated successfully', 'success');
       } else {
-        await createJob(jobData);
+        saved = await createJob(jobData);
         showMessage('Job added successfully', 'success');
       }
       setModalOpen(false);
       setEditingJob(null);
-      fetchJobs();
+      upsertJob(saved);
     } catch (error) {
       if (error.response?.data?.error) {
         showMessage(error.response.data.error, 'error');
@@ -117,7 +148,7 @@ function JobTrackerApp() {
     try {
       await deleteJob(id);
       showMessage('Job deleted successfully', 'success');
-      fetchJobs();
+      removeJob(id);
     } catch (error) {
       showMessage('Failed to delete job: ' + error.message, 'error');
     }
@@ -125,8 +156,8 @@ function JobTrackerApp() {
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      await updateJobStatus(id, newStatus);
-      fetchJobs();
+      const updated = await updateJobStatus(id, newStatus);
+      upsertJob(updated);
     } catch (error) {
       showMessage('Failed to update status: ' + error.message, 'error');
     }
