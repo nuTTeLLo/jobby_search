@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import JobSearch from './components/JobSearch';
 import JobList from './components/JobList';
 import JobModal from './components/JobModal';
@@ -26,6 +26,7 @@ function JobTrackerApp() {
   const [editingJob, setEditingJob] = useState(null);
   const [message, setMessage] = useState(null);
   const [hoveredJob, setHoveredJob] = useState(null);
+  const [filterText, setFilterText] = useState('');
 
   useEffect(() => {
     fetchJobs();
@@ -163,6 +164,27 @@ function JobTrackerApp() {
     }
   };
 
+  // Free-text filter across the fields shown in the tracked jobs table.
+  const filteredJobs = useMemo(() => {
+    const query = filterText.trim().toLowerCase();
+    if (!query) return jobs;
+    const terms = query.split(/\s+/);
+    return jobs.filter((job) => {
+      const haystack = [
+        job.job_title,
+        job.company_name,
+        job.location,
+        job.job_type,
+        job.source,
+        job.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [jobs, filterText]);
+
   const showMessage = (text, type) => {
     setMessage({ text, type });
     setTimeout(() => setMessage(null), 3000);
@@ -288,11 +310,31 @@ function JobTrackerApp() {
           </button>
         </div>
 
+        <div style={styles.filterBar}>
+          <input
+            type="text"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Filter jobs by title, company, location, type or source..."
+            style={styles.filterInput}
+          />
+          {filterText && (
+            <button onClick={() => setFilterText('')} style={styles.filterClearBtn}>
+              Clear
+            </button>
+          )}
+          <span style={styles.filterCount}>
+            {filterText
+              ? `${filteredJobs.length} of ${jobs.length} jobs`
+              : `${jobs.length} jobs`}
+          </span>
+        </div>
+
         {loading ? (
           <div style={styles.loading}>Loading...</div>
         ) : (
           <JobList
-            jobs={jobs}
+            jobs={filteredJobs}
             onStatusChange={handleStatusChange}
             onEdit={handleEdit}
             onDelete={handleDelete}
@@ -523,6 +565,35 @@ const styles = {
     borderRadius: '4px',
     fontSize: '14px',
     cursor: 'pointer',
+  },
+  filterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '15px',
+  },
+  filterInput: {
+    flex: 1,
+    padding: '8px 12px',
+    border: '1px solid #dee2e6',
+    borderRadius: '4px',
+    fontSize: '14px',
+    color: '#333',
+    backgroundColor: 'white',
+  },
+  filterClearBtn: {
+    padding: '8px 14px',
+    backgroundColor: '#6c757d',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  filterCount: {
+    fontSize: '13px',
+    color: '#6c757d',
+    whiteSpace: 'nowrap',
   },
   loading: {
     textAlign: 'center',
