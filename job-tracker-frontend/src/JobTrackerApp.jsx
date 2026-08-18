@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import JobSearch from './components/JobSearch';
 import JobList from './components/JobList';
 import JobModal from './components/JobModal';
+import AppHeader from './components/AppHeader';
 import { getJobs, createJob, updateJob, deleteJob, updateJobStatus, searchJobs } from './services/api';
-import { useAuth } from './contexts/AuthContext';
 import './App.css';
 
 const STATUS_TABS = [
@@ -16,7 +16,6 @@ const STATUS_TABS = [
 ];
 
 function JobTrackerApp() {
-  const { user, logout } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -192,13 +191,7 @@ function JobTrackerApp() {
 
   return (
     <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>Job Tracker</h1>
-        <div style={styles.headerRight}>
-          <span style={styles.userEmail}>{user?.email}</span>
-          <button onClick={logout} style={styles.logoutBtn}>Sign Out</button>
-        </div>
-      </header>
+      <AppHeader />
 
       <main style={styles.main}>
         <JobSearch onSearch={handleSearch} loading={searching} />
@@ -361,38 +354,6 @@ const styles = {
   container: {
     minHeight: '100vh',
     backgroundColor: '#f5f5f5',
-  },
-  header: {
-    backgroundColor: '#0d6efd',
-    color: 'white',
-    padding: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    margin: 0,
-    fontSize: '24px',
-    fontWeight: '600',
-  },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  userEmail: {
-    fontSize: '14px',
-    opacity: 0.9,
-  },
-  logoutBtn: {
-    padding: '6px 14px',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    color: 'white',
-    border: '1px solid rgba(255,255,255,0.4)',
-    borderRadius: '4px',
-    fontSize: '13px',
-    cursor: 'pointer',
   },
   main: {
     maxWidth: '1200px',

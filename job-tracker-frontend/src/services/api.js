@@ -59,6 +59,19 @@ export const updateJobStatus = async (id, status) => {
   return response.data.data;
 };
 
+// Discovered jobs: postings surfaced by the daily scrape. Read-only apart from
+// dismissing; the backend keeps a rolling 7-day window.
+export const getDiscoveredJobs = async ({ includeDismissed = false } = {}) => {
+  const params = includeDismissed ? { include_dismissed: 'true' } : {};
+  const response = await api.get('/api/discovered-jobs', { params });
+  return response.data.data || [];
+};
+
+export const dismissDiscoveredJob = async (id) => {
+  const response = await api.patch(`/api/discovered-jobs/${id}/dismiss`);
+  return response.data.data;
+};
+
 export const searchJobs = async (searchParams) => {
   const response = await api.post('/api/jobs/search', searchParams);
   return response.data.data;

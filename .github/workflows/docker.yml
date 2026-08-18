@@ -23,6 +23,8 @@ jobs:
             image: job-tracker-backend
           - context: ./job-tracker-frontend
             image: job-tracker-frontend
+          - context: ./daily-scrape
+            image: job-tracker-scraper
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

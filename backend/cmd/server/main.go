@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Migrate with user_id nullable first to allow backfill
-	if err := db.AutoMigrate(&domain.User{}, &domain.Job{}, &domain.Attachment{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Job{}, &domain.Attachment{}, &domain.DiscoveredJob{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
@@ -53,11 +53,14 @@ func main() {
 
 	jobRepo := repository.NewJobRepository(db)
 	userRepo := repository.NewUserRepository(db)
+	discoveredRepo := repository.NewDiscoveredJobRepository(db)
 	jobService := service.NewJobService(jobRepo, cfg.MCPServerURL)
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiration)
+	discoveredService := service.NewDiscoveredJobService(discoveredRepo)
 	jobHandler := handler.NewJobHandler(jobService)
 	attachmentHandler := handler.NewAttachmentHandler(jobService)
 	authHandler := handler.NewAuthHandler(authService)
+	discoveredHandler := handler.NewDiscoveredJobHandler(discoveredService)
 
 	authMW := appMiddleware.Authenticate(cfg.JWTSecret)
 
@@ -86,6 +89,7 @@ func main() {
 		r.Post("/api/auth/change-password", authHandler.ChangePassword)
 		r.Mount("/api/jobs", jobHandler.Routes())
 		r.Mount("/api/jobs/{id}/attachments", attachmentHandler.Routes())
+		r.Mount("/api/discovered-jobs", discoveredHandler.Routes())
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.ServerPort)

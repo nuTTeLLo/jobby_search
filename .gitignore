@@ -9,3 +9,10 @@ node_modules
 dist
 tmp
 .venv/
+
+# daily-scrape
+daily-scrape/__pycache__/
+
+# nix build symlinks
+result
+result-*
