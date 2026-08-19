@@ -2,12 +2,14 @@
   "search_terms": [
     "Software Engineer",
     "Full Stack Developer",
-    "Backend Engineer"
+    "Backend Engineer",
+    "Data Engineer",
+    "Analytics Engineer"
   ],
   "location": "Melbourne, Victoria, Australia",
   "hours_old": 24,
   "max_pages_per_term": 10,
-  "title_include": "(software engineer|software developer|full[ -]?stack|back[ -]?end|backend)",
+  "title_include": "(software engineer|software developer|full[ -]?stack|back[ -]?end|backend|data engineer|data engineering|analytics engineer|data platform|etl (developer|engineer))",
   "title_exclude": "(intern\\b|internship|graduate program|apprentice)",
   "tracker_url": "http://job-tracker-backend:8080",
   "tracker_user_id": "dcb0c57e-5c30-4190-9362-82e023ef5197",
