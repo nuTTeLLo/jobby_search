@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from '../services/api';
+import { FILE_TYPES, fileTypeLabel } from '../constants/attachments';
 
 const JOB_TYPES = [
   { value: '', label: 'Select type...' },
@@ -17,11 +18,6 @@ const SOURCES = [
   { value: 'glassdoor', label: 'Glassdoor' },
   { value: 'other', label: 'Other' },
   { value: 'manual', label: 'Manual Entry' },
-];
-
-const FILE_TYPES = [
-  { value: 'resume', label: 'Resume' },
-  { value: 'cover_letter', label: 'Cover Letter' },
 ];
 
 export default function JobModal({ job, onSave, onClose, onRefresh }) {
@@ -226,7 +222,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                       <div style={styles.attachmentInfo}>
                         <span style={styles.attachmentName}>{attachment.file_name}</span>
                         <span style={styles.attachmentMeta}>
-                          {attachment.file_type === 'resume' ? 'Resume' : 'Cover Letter'} • {formatFileSize(attachment.file_size)}
+                          {fileTypeLabel(attachment.file_type)} • {formatFileSize(attachment.file_size)}
                         </span>
                       </div>
                       <button
@@ -252,7 +248,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 <input
                   id="file-input"
                   type="file"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.doc,.docx,.txt,.md"
                   onChange={handleFileChange}
                   style={styles.fileInput}
                 />
@@ -277,7 +273,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 </button>
               </div>
               <div style={styles.uploadHint}>
-                Accepted: PDF, DOC, DOCX (max 10MB)
+                Accepted: PDF, DOC, DOCX, TXT, MD (max 10MB)
               </div>
             </div>
           )}

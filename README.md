@@ -102,7 +102,7 @@ bun run dev
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/jobs` | List jobs (supports `?status=applied`) |
+| GET | `/api/jobs` | List jobs, paginated (supports `?status=applied&q=text&page=1&page_size=25`) |
 | POST | `/api/jobs` | Add job manually |
 | GET | `/api/jobs/:id` | Get job by ID |
 | PUT | `/api/jobs/:id` | Update job |

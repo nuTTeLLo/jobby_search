@@ -1,6 +1,6 @@
 # Job Tracker Backend
 
-Go backend API for managing job applications with file attachments (resumes and cover letters).
+Go backend API for managing job applications with file attachments (resumes, cover letters, and typed question responses).
 
 ## Quick Start
 
@@ -101,7 +101,7 @@ docker exec -it job-tracker-db pg_restore -U jobuser -d jobtracker -c /tmp/backu
 
 | Method | Endpoint                      | Description                |
 | ------ | ----------------------------- | -------------------------- |
-| POST   | `/api/jobs/:id/attachments`   | Upload resume/cover letter|
+| POST   | `/api/jobs/:id/attachments`   | Upload a document          |
 | GET    | `/api/jobs/:id/attachments`   | List job's attachments     |
 | GET    | `/api/jobs/:id/attachments/:id` | Get attachment metadata |
 | GET    | `/api/jobs/:id/attachments/:id/download` | Download file    |
@@ -114,6 +114,10 @@ curl -X POST "http://localhost:8080/api/jobs/{job_id}/attachments" \
   -F "file=@/path/to/resume.pdf" \
   -F "file_type=resume"
 ```
+
+`file_type` is one of `resume`, `cover_letter`, `cover_letter_typed`, or
+`question_responses`. Accepted formats are PDF, DOC, DOCX, TXT and MD (max
+10MB) — the typed kinds are usually plain text or markdown.
 
 ## Development
 

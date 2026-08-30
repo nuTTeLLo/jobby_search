@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"job-tracker-backend/internal/domain"
 	appMiddleware "job-tracker-backend/internal/middleware"
@@ -51,12 +52,17 @@ func (h *JobHandler) Routes() http.Handler {
 func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 	userID := appMiddleware.UserIDFromContext(r.Context())
 
+	query := r.URL.Query()
 	filter := &domain.JobFilter{
-		Status: r.URL.Query().Get("status"),
-		Source: r.URL.Query().Get("source"),
+		Status: query.Get("status"),
+		Source: query.Get("source"),
+		Search: query.Get("q"),
 	}
 
-	jobs, err := h.service.GetAllJobs(userID, filter)
+	page, _ := strconv.Atoi(query.Get("page"))
+	pageSize, _ := strconv.Atoi(query.Get("page_size"))
+
+	result, err := h.service.GetAllJobs(userID, filter, page, pageSize)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -64,12 +70,8 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if jobs == nil {
-		jobs = []domain.Job{}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response.Success(jobs))
+	json.NewEncoder(w).Encode(response.Success(result))
 }
 
 func (h *JobHandler) CreateJob(w http.ResponseWriter, r *http.Request) {

@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"job-tracker-backend/internal/domain"
 	"job-tracker-backend/internal/repository"
@@ -105,8 +109,8 @@ func (s *JobService) CreateJob(userID string, input *domain.JobCreateInput) (*do
 			}
 			return false
 		}(),
-		Status:      string(domain.StatusNew),
-		Notes:       input.Notes,
+		Status: string(domain.StatusNew),
+		Notes:  input.Notes,
 	}
 
 	if job.Source == "" {
@@ -123,12 +127,39 @@ func (s *JobService) GetJob(userID, id string) (*domain.Job, error) {
 	return s.repo.GetByID(id, userID)
 }
 
-func (s *JobService) GetAllJobs(userID string, filter *domain.JobFilter) ([]domain.Job, error) {
+// DefaultPageSize / MaxPageSize bound how many tracked jobs one list request
+// returns; the full list is large enough that fetching it in one go is slow.
+const (
+	DefaultPageSize = 25
+	MaxPageSize     = 100
+)
+
+func (s *JobService) GetAllJobs(userID string, filter *domain.JobFilter, page, pageSize int) (*domain.JobPage, error) {
 	if filter == nil {
 		filter = &domain.JobFilter{}
 	}
 	filter.UserID = userID
-	return s.repo.GetAll(filter)
+
+	if pageSize <= 0 {
+		pageSize = DefaultPageSize
+	}
+	if pageSize > MaxPageSize {
+		pageSize = MaxPageSize
+	}
+	if page < 1 {
+		page = 1
+	}
+	filter.Limit = pageSize
+	filter.Offset = (page - 1) * pageSize
+
+	jobs, total, err := s.repo.GetAll(filter)
+	if err != nil {
+		return nil, err
+	}
+	if jobs == nil {
+		jobs = []domain.Job{}
+	}
+	return &domain.JobPage{Jobs: jobs, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
 func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) (*domain.Job, error) {
@@ -302,33 +333,79 @@ func (s *JobService) SearchJobs(userID string, params MCPSearchParams) ([]Search
 
 // Attachment constants
 const (
-	MaxFileSize                int64 = 10 * 1024 * 1024 // 10MB
-	AllowedFileTypeResume            = "resume"
-	AllowedFileTypeCoverLetter       = "cover_letter"
+	MaxFileSize                      int64 = 10 * 1024 * 1024 // 10MB
+	AllowedFileTypeResume                  = "resume"
+	AllowedFileTypeCoverLetter             = "cover_letter"
+	AllowedFileTypeCoverLetterTyped        = "cover_letter_typed"
+	AllowedFileTypeQuestionResponses       = "question_responses"
 )
+
+// allowedFileTypes is the set of document kinds that can hang off a job. The
+// typed kinds are written out by hand rather than being a formal document, so
+// they usually arrive as plain text or markdown.
+var allowedFileTypes = map[string]bool{
+	AllowedFileTypeResume:            true,
+	AllowedFileTypeCoverLetter:       true,
+	AllowedFileTypeCoverLetterTyped:  true,
+	AllowedFileTypeQuestionResponses: true,
+}
 
 var allowedMIMETypes = map[string]bool{
 	"application/pdf":    true,
 	"application/msword": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"text/plain":    true,
+	"text/markdown": true,
+}
+
+// normalizeMIMEType resolves the Content-Type a browser attached to an upload
+// into one of the bare types in allowedMIMETypes. Browsers append parameters to
+// text types ("text/plain; charset=utf-8"), and often send nothing useful at
+// all for .md, so fall back to the file extension in that case.
+func normalizeMIMEType(mimeType, fileName string) string {
+	if parsed, _, err := mime.ParseMediaType(mimeType); err == nil {
+		mimeType = strings.ToLower(parsed)
+	}
+
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		switch strings.ToLower(filepath.Ext(fileName)) {
+		case ".txt":
+			return "text/plain"
+		case ".md", ".markdown":
+			return "text/markdown"
+		}
+	}
+	return mimeType
+}
+
+// sortedKeys renders an allowlist for error messages, so the wording can't
+// drift out of sync with the map it describes.
+func sortedKeys(m map[string]bool) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
 }
 
 type AttachmentInput struct {
 	JobID    string
 	UserID   string
 	FileName string
-	FileType string // "resume" or "cover_letter"
+	FileType string // one of allowedFileTypes
 	MIMEType string
 	Data     []byte
 }
 
 func (s *JobService) CreateAttachment(input *AttachmentInput) (*domain.Attachment, error) {
-	if input.FileType != AllowedFileTypeResume && input.FileType != AllowedFileTypeCoverLetter {
-		return nil, fmt.Errorf("invalid file type: %s (must be 'resume' or 'cover_letter')", input.FileType)
+	if !allowedFileTypes[input.FileType] {
+		return nil, fmt.Errorf("invalid file type: %s (allowed: %s)", input.FileType, sortedKeys(allowedFileTypes))
 	}
 
-	if !allowedMIMETypes[input.MIMEType] {
-		return nil, fmt.Errorf("invalid MIME type: %s (allowed: application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document)", input.MIMEType)
+	mimeType := normalizeMIMEType(input.MIMEType, input.FileName)
+	if !allowedMIMETypes[mimeType] {
+		return nil, fmt.Errorf("invalid MIME type: %s (allowed: %s)", input.MIMEType, sortedKeys(allowedMIMETypes))
 	}
 
 	if int64(len(input.Data)) > MaxFileSize {
@@ -345,7 +422,7 @@ func (s *JobService) CreateAttachment(input *AttachmentInput) (*domain.Attachmen
 		JobID:    input.JobID,
 		FileName: input.FileName,
 		FileType: input.FileType,
-		MIMEType: input.MIMEType,
+		MIMEType: mimeType,
 		Data:     input.Data,
 		FileSize: int64(len(input.Data)),
 	}

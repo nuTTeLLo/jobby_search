@@ -133,7 +133,7 @@ Supports SSE and Stdio transports. SSE enabled by default (`ENABLE_SSE=1`).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/jobs` | List jobs (`?status=applied`) |
+| GET | `/api/jobs` | List jobs, paginated (`?status=applied&q=text&page=1&page_size=25`) |
 | POST | `/api/jobs` | Add job manually |
 | GET | `/api/jobs/:id` | Get job by ID |
 | PUT | `/api/jobs/:id` | Update job |
@@ -237,3 +237,7 @@ docker cp job-tracker-db:/tmp/backup.dump ./
 | **Logging** | Use winston logger |
 
 **Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`
+
+**Attachment file types**: `resume`, `cover_letter`, `cover_letter_typed`, `question_responses`
+(allowlist in `backend/internal/service/job.go`, mirrored in
+`job-tracker-frontend/src/constants/attachments.js`). Accepted formats: PDF, DOC, DOCX, TXT, MD.

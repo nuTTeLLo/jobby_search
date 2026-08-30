@@ -29,10 +29,20 @@ api.interceptors.response.use(
   }
 );
 
-export const getJobs = async (status = '') => {
-  const params = status ? { status } : {};
+// Tracked jobs are paginated server-side; `q` is the free-text filter, matched
+// against title, company, location, type, source and status across all pages.
+export const getJobs = async ({ status = '', q = '', page = 1, pageSize = 25 } = {}) => {
+  const params = { page, page_size: pageSize };
+  if (status) params.status = status;
+  if (q) params.q = q;
   const response = await api.get('/api/jobs', { params });
-  return response.data.data || [];
+  const data = response.data.data || {};
+  return {
+    jobs: data.jobs || [],
+    total: data.total || 0,
+    page: data.page || page,
+    pageSize: data.page_size || pageSize,
+  };
 };
 
 export const getJob = async (id) => {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import StatusBadge from './StatusBadge';
 import { API_BASE, downloadAttachment } from '../services/api';
+import { fileTypeLabel } from '../constants/attachments';
 
 const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted'];
 
@@ -237,7 +238,7 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                         key={attachment.id || idx}
                         onClick={() => downloadAttachment(job.id, attachment.id)}
                         style={styles.attachmentIcon}
-                        title={`${attachment.file_type}: ${attachment.file_name}`}
+                        title={`${fileTypeLabel(attachment.file_type)}: ${attachment.file_name}`}
                       >
                         📄
                       </button>

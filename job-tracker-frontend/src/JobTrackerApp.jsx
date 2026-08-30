@@ -1,10 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import JobSearch from './components/JobSearch';
 import JobList from './components/JobList';
 import JobModal from './components/JobModal';
 import AppHeader from './components/AppHeader';
 import { getJobs, createJob, updateJob, deleteJob, updateJobStatus, searchJobs } from './services/api';
 import './App.css';
+
+const PAGE_SIZE = 25;
+const FILTER_DEBOUNCE_MS = 300;
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
@@ -26,51 +29,88 @@ function JobTrackerApp() {
   const [message, setMessage] = useState(null);
   const [hoveredJob, setHoveredJob] = useState(null);
   const [filterText, setFilterText] = useState('');
+  // The filter runs server-side, so debounce it rather than firing per keystroke.
+  const [appliedFilter, setAppliedFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    fetchJobs();
-  }, [statusFilter]);
+    const timer = setTimeout(() => setAppliedFilter(filterText.trim()), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [filterText]);
 
-  const fetchJobs = async () => {
+  // Any change to what's being listed starts again from the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, appliedFilter]);
+
+  const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getJobs(statusFilter);
-      setJobs(data);
+      const data = await getJobs({
+        status: statusFilter,
+        q: appliedFilter,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+      setJobs(data.jobs);
+      setTotal(data.total);
+      // Deleting the last row of the last page can leave us past the end.
+      if (data.jobs.length === 0 && page > 1) {
+        setPage(page - 1);
+      }
     } catch (error) {
       showMessage('Failed to fetch jobs: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter, appliedFilter, page]);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Whether a job belongs in the currently visible list given the active tab.
   const belongsToFilter = (job) => statusFilter === '' || job.status === statusFilter;
 
-  // Merge a created/updated job into local state without a full reload.
-  const upsertJob = (job) => {
-    setJobs((prev) => {
-      const exists = prev.some((j) => j.id === job.id);
-      if (!belongsToFilter(job)) {
-        // No longer matches the active tab — remove if present.
-        return exists ? prev.filter((j) => j.id !== job.id) : prev;
-      }
-      if (exists) {
-        // Status/update responses don't preload attachments (they come back null),
-        // so keep the ones already in state rather than clobbering them.
-        return prev.map((j) =>
-          j.id === job.id
-            ? { ...j, ...job, attachments: job.attachments ?? j.attachments }
-            : j
-        );
-      }
-      // New to this view — surface it at the top.
-      return [job, ...prev];
-    });
+  // Mirrors the backend's free-text match, so an edited job that no longer
+  // matches the filter box triggers a refetch instead of lingering on the page.
+  const matchesFilter = (job) => {
+    const terms = appliedFilter.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return true;
+    const haystack = [
+      job.job_title,
+      job.company_name,
+      job.location,
+      job.job_type,
+      job.source,
+      job.status,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return terms.every((term) => haystack.includes(term));
   };
 
-  // Drop a deleted job from local state without a full reload.
-  const removeJob = (id) => {
-    setJobs((prev) => prev.filter((j) => j.id !== id));
+  // Merge an updated job into the current page without a reload. Anything that
+  // changes which rows the page holds (a new job, or one that no longer matches
+  // the active tab or filter) needs a refetch so the page stays full and the
+  // total stays accurate.
+  const upsertJob = (job) => {
+    const onPage = jobs.some((j) => j.id === job.id);
+    if (!onPage || !belongsToFilter(job) || !matchesFilter(job)) {
+      fetchJobs();
+      return;
+    }
+    // Status/update responses don't preload attachments (they come back null),
+    // so keep the ones already in state rather than clobbering them.
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === job.id ? { ...j, ...job, attachments: job.attachments ?? j.attachments } : j
+      )
+    );
   };
 
   const handleSearch = async (params) => {
@@ -148,7 +188,7 @@ function JobTrackerApp() {
     try {
       await deleteJob(id);
       showMessage('Job deleted successfully', 'success');
-      removeJob(id);
+      fetchJobs();
     } catch (error) {
       showMessage('Failed to delete job: ' + error.message, 'error');
     }
@@ -162,27 +202,6 @@ function JobTrackerApp() {
       showMessage('Failed to update status: ' + error.message, 'error');
     }
   };
-
-  // Free-text filter across the fields shown in the tracked jobs table.
-  const filteredJobs = useMemo(() => {
-    const query = filterText.trim().toLowerCase();
-    if (!query) return jobs;
-    const terms = query.split(/\s+/);
-    return jobs.filter((job) => {
-      const haystack = [
-        job.job_title,
-        job.company_name,
-        job.location,
-        job.job_type,
-        job.source,
-        job.status,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return terms.every((term) => haystack.includes(term));
-    });
-  }, [jobs, filterText]);
 
   const showMessage = (text, type) => {
     setMessage({ text, type });
@@ -317,21 +336,44 @@ function JobTrackerApp() {
             </button>
           )}
           <span style={styles.filterCount}>
-            {filterText
-              ? `${filteredJobs.length} of ${jobs.length} jobs`
-              : `${jobs.length} jobs`}
+            {total === 0
+              ? 'No jobs'
+              : `${total} job${total === 1 ? '' : 's'}${appliedFilter ? ' matched' : ''}`}
           </span>
         </div>
 
         {loading ? (
           <div style={styles.loading}>Loading...</div>
         ) : (
-          <JobList
-            jobs={filteredJobs}
-            onStatusChange={handleStatusChange}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
+          <>
+            <JobList
+              jobs={jobs}
+              onStatusChange={handleStatusChange}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+            {totalPages > 1 && (
+              <div style={styles.pagination}>
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  style={page <= 1 ? styles.pageBtnDisabled : styles.pageBtn}
+                >
+                  Previous
+                </button>
+                <span style={styles.pageStatus}>
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  style={page >= totalPages ? styles.pageBtnDisabled : styles.pageBtn}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -555,6 +597,35 @@ const styles = {
     fontSize: '13px',
     color: '#6c757d',
     whiteSpace: 'nowrap',
+  },
+  pagination: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '12px',
+    marginTop: '20px',
+  },
+  pageBtn: {
+    padding: '8px 16px',
+    backgroundColor: 'white',
+    border: '1px solid #dee2e6',
+    borderRadius: '4px',
+    fontSize: '14px',
+    color: '#333',
+    cursor: 'pointer',
+  },
+  pageBtnDisabled: {
+    padding: '8px 16px',
+    backgroundColor: '#f1f3f5',
+    border: '1px solid #dee2e6',
+    borderRadius: '4px',
+    fontSize: '14px',
+    color: '#adb5bd',
+    cursor: 'not-allowed',
+  },
+  pageStatus: {
+    fontSize: '13px',
+    color: '#6c757d',
   },
   loading: {
     textAlign: 'center',
