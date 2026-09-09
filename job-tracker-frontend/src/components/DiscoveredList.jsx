@@ -4,16 +4,47 @@ const APPLY_BADGES = {
   unknown: { label: 'Apply type unknown', color: '#adb5bd' },
 };
 
-// Group by the day a posting was first seen, newest day first. The backend already
-// orders rows by discovered_at DESC, so insertion order gives us the grouping for free.
+// Within a day, postings are ordered by how much attention they deserve: companies we
+// have applied to before come first whatever their apply type, then fresh external
+// applications, then easy-apply postings. Inside the applied-before tier the easy-apply
+// postings sink to the bottom, so the ones worth a real application read first.
+const isEasyApply = (job) => job.apply_type === 'easy_apply';
+
+const TIERS = [
+  {
+    key: 'applied_before',
+    label: 'Applied here before',
+    match: (job) => job.applied_before,
+    sortWithin: (a, b) => isEasyApply(a) - isEasyApply(b),
+  },
+  { key: 'new', label: 'New application', match: (job) => !isEasyApply(job) },
+  { key: 'easy_apply', label: 'Easy apply', match: () => true },
+];
+
+function tierIndex(job) {
+  return TIERS.findIndex((tier) => tier.match(job));
+}
+
+// Group by the day a posting was first seen, newest day first, then into tiers within
+// the day. The backend already orders rows by discovered_at DESC, so insertion order
+// gives us both the day grouping and the ordering inside each tier for free.
 function groupByDay(jobs) {
-  const groups = new Map();
+  const days = new Map();
   for (const job of jobs) {
     const day = (job.discovered_at || '').slice(0, 10);
-    if (!groups.has(day)) groups.set(day, []);
-    groups.get(day).push(job);
+    if (!days.has(day)) days.set(day, TIERS.map(() => []));
+    days.get(day)[tierIndex(job)].push(job);
   }
-  return [...groups.entries()];
+
+  return [...days.entries()].map(([day, buckets]) => ({
+    day,
+    count: buckets.reduce((total, bucket) => total + bucket.length, 0),
+    tiers: TIERS.map((tier, i) => ({
+      ...tier,
+      // Array#sort is stable, so discovered_at DESC still holds within each half.
+      jobs: tier.sortWithin ? buckets[i].sort(tier.sortWithin) : buckets[i],
+    })).filter((tier) => tier.jobs.length > 0),
+  }));
 }
 
 function formatDay(day) {
@@ -51,52 +82,61 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
 
   return (
     <div>
-      {groupByDay(jobs).map(([day, dayJobs]) => (
+      {groupByDay(jobs).map(({ day, count, tiers }) => (
         <section key={day} style={styles.daySection}>
           <h3 style={styles.dayHeading}>
             {formatDay(day)}
-            <span style={styles.dayCount}>{dayJobs.length}</span>
+            <span style={styles.dayCount}>{count}</span>
           </h3>
 
-          {dayJobs.map((job) => {
-            const badge = APPLY_BADGES[job.apply_type] || APPLY_BADGES.unknown;
-            return (
-              <div key={job.id} style={styles.row}>
-                <div style={styles.rowMain}>
-                  <a
-                    href={job.job_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={styles.jobTitle}
-                  >
-                    {job.job_title}
-                  </a>
-                  <div style={styles.subline}>
-                    {job.company_name}
-                    {job.location ? ` · ${job.location}` : ''}
-                  </div>
-                </div>
+          {tiers.map((tier) => (
+            <div key={tier.key} style={styles.tierSection}>
+              <h4 style={styles.tierHeading}>
+                {tier.label}
+                <span style={styles.tierCount}>{tier.jobs.length}</span>
+              </h4>
 
-                <div style={styles.badges}>
-                  <span style={{ ...styles.badge, backgroundColor: badge.color }}>
-                    {badge.label}
-                  </span>
-                  {job.applied_before && (
-                    <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
-                      Applied here before
-                    </span>
-                  )}
-                  <button
-                    onClick={() => onDismiss(job.id)}
-                    style={styles.dismissBtn}
-                    title="Hide this posting"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              {tier.jobs.map((job) => {
+                const badge = APPLY_BADGES[job.apply_type] || APPLY_BADGES.unknown;
+                return (
+                  <div key={job.id} style={styles.row}>
+                    <div style={styles.rowMain}>
+                      <a
+                        href={job.job_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.jobTitle}
+                      >
+                        {job.job_title}
+                      </a>
+                      <div style={styles.subline}>
+                        {job.company_name}
+                        {job.location ? ` · ${job.location}` : ''}
+                      </div>
+                    </div>
+
+                    <div style={styles.badges}>
+                      <span style={{ ...styles.badge, backgroundColor: badge.color }}>
+                        {badge.label}
+                      </span>
+                      {job.applied_before && (
+                        <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
+                          Applied here before
+                        </span>
+                      )}
+                      <button
+                        onClick={() => onDismiss(job.id)}
+                        style={styles.dismissBtn}
+                        title="Hide this posting"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </section>
       ))}
     </div>
@@ -123,6 +163,22 @@ const styles = {
     letterSpacing: '0.05em',
     color: '#6c757d',
     margin: '0 0 8px 0',
+  },
+  tierSection: {
+    marginBottom: '14px',
+  },
+  tierHeading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#868e96',
+    margin: '0 0 6px 2px',
+  },
+  tierCount: {
+    color: '#adb5bd',
+    fontWeight: 500,
   },
   dayCount: {
     backgroundColor: '#e9ecef',
