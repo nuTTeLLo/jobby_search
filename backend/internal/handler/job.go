@@ -387,7 +387,10 @@ func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Always a download, never rendered: HTML attachments (interview prep pages)
+	// must not execute on the tracker's origin.
 	w.Header().Set("Content-Type", attachment.MIMEType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachment.FileName))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
 	w.Write(attachment.Data)

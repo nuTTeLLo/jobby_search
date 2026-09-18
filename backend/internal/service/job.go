@@ -358,6 +358,7 @@ var allowedMIMETypes = map[string]bool{
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 	"text/plain":    true,
 	"text/markdown": true,
+	"text/html":     true,
 }
 
 // normalizeMIMEType resolves the Content-Type a browser attached to an upload
@@ -375,6 +376,8 @@ func normalizeMIMEType(mimeType, fileName string) string {
 			return "text/plain"
 		case ".md", ".markdown":
 			return "text/markdown"
+		case ".html", ".htm":
+			return "text/html"
 		}
 	}
 	return mimeType

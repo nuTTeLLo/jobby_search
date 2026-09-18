@@ -248,7 +248,7 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 <input
                   id="file-input"
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt,.md"
+                  accept=".pdf,.doc,.docx,.txt,.md,.html"
                   onChange={handleFileChange}
                   style={styles.fileInput}
                 />

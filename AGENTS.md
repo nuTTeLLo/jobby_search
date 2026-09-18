@@ -240,4 +240,4 @@ docker cp job-tracker-db:/tmp/backup.dump ./
 
 **Attachment file types**: `resume`, `cover_letter`, `cover_letter_typed`, `question_responses`, `interview_prep`
 (allowlist in `backend/internal/service/job.go`, mirrored in
-`job-tracker-frontend/src/constants/attachments.js`). Accepted formats: PDF, DOC, DOCX, TXT, MD.
+`job-tracker-frontend/src/constants/attachments.js`). Accepted formats: PDF, DOC, DOCX, TXT, MD, HTML.

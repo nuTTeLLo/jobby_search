@@ -116,8 +116,10 @@ curl -X POST "http://localhost:8080/api/jobs/{job_id}/attachments" \
 ```
 
 `file_type` is one of `resume`, `cover_letter`, `cover_letter_typed`,
-`question_responses`, or `interview_prep`. Accepted formats are PDF, DOC, DOCX, TXT and MD (max
-10MB) — the typed kinds are usually plain text or markdown.
+`question_responses`, or `interview_prep`. Accepted formats are PDF, DOC, DOCX, TXT, MD and HTML
+(max 10MB) — the typed kinds are usually plain text or markdown, and interview
+prep is usually a self-contained HTML page. Downloads are always served as
+`attachment` with `nosniff`, so HTML is never rendered on the tracker's origin.
 
 ## Development
 
