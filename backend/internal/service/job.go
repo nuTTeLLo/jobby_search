@@ -338,6 +338,7 @@ const (
 	AllowedFileTypeCoverLetter             = "cover_letter"
 	AllowedFileTypeCoverLetterTyped        = "cover_letter_typed"
 	AllowedFileTypeQuestionResponses       = "question_responses"
+	AllowedFileTypeInterviewPrep           = "interview_prep"
 )
 
 // allowedFileTypes is the set of document kinds that can hang off a job. The
@@ -348,6 +349,7 @@ var allowedFileTypes = map[string]bool{
 	AllowedFileTypeCoverLetter:       true,
 	AllowedFileTypeCoverLetterTyped:  true,
 	AllowedFileTypeQuestionResponses: true,
+	AllowedFileTypeInterviewPrep:     true,
 }
 
 var allowedMIMETypes = map[string]bool{

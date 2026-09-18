@@ -238,6 +238,6 @@ docker cp job-tracker-db:/tmp/backup.dump ./
 
 **Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`
 
-**Attachment file types**: `resume`, `cover_letter`, `cover_letter_typed`, `question_responses`
+**Attachment file types**: `resume`, `cover_letter`, `cover_letter_typed`, `question_responses`, `interview_prep`
 (allowlist in `backend/internal/service/job.go`, mirrored in
 `job-tracker-frontend/src/constants/attachments.js`). Accepted formats: PDF, DOC, DOCX, TXT, MD.

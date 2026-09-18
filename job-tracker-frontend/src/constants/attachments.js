@@ -5,6 +5,7 @@ export const FILE_TYPES = [
   { value: 'cover_letter', label: 'Cover Letter' },
   { value: 'cover_letter_typed', label: 'Cover Letter (Typed)' },
   { value: 'question_responses', label: 'Question Responses' },
+  { value: 'interview_prep', label: 'Interview Prep' },
 ];
 
 // Falls back to the raw value so an unrecognised type from the API still reads

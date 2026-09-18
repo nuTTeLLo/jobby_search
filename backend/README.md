@@ -115,8 +115,8 @@ curl -X POST "http://localhost:8080/api/jobs/{job_id}/attachments" \
   -F "file_type=resume"
 ```
 
-`file_type` is one of `resume`, `cover_letter`, `cover_letter_typed`, or
-`question_responses`. Accepted formats are PDF, DOC, DOCX, TXT and MD (max
+`file_type` is one of `resume`, `cover_letter`, `cover_letter_typed`,
+`question_responses`, or `interview_prep`. Accepted formats are PDF, DOC, DOCX, TXT and MD (max
 10MB) — the typed kinds are usually plain text or markdown.
 
 ## Development
