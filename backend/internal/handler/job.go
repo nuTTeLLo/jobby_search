@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"job-tracker-backend/internal/auth"
@@ -487,7 +488,15 @@ func (h *AttachmentHandler) ViewAttachment(w http.ResponseWriter, r *http.Reques
 	// prompting a save.
 	contentType := attachment.MIMEType
 	if contentType == "text/markdown" {
-		contentType = "text/plain; charset=utf-8"
+		contentType = "text/plain"
+	}
+	// Everything textual is stored as UTF-8, and it has to be declared: with no
+	// charset a browser falls back to a legacy encoding (WebKit picks
+	// Windows-1252), turning every em dash and curly quote into mojibake. The
+	// header wins over any meta tag in the document, so a page that forgot its
+	// own <meta charset> still renders correctly.
+	if strings.HasPrefix(contentType, "text/") {
+		contentType += "; charset=utf-8"
 	}
 
 	w.Header().Set("Content-Type", contentType)
