@@ -13,6 +13,15 @@ const SOURCE_BADGES = {
   other: { backgroundColor: '#6c757d', color: 'white', label: 'Other' },
 };
 
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '-';
+
 export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
   const [statusMenu, setStatusMenu] = useState(null); // { jobId, position: { top, left } }
   const [sortColumn, setSortColumn] = useState(null);
@@ -53,6 +62,10 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
       case 'Status':
         aVal = a.status || '';
         bVal = b.status || '';
+        break;
+      case 'Added':
+        aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
+        bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
         break;
       case 'Updated':
         aVal = a.updated ? new Date(a.updated).getTime() : 0;
@@ -151,6 +164,10 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
               Status
               {getSortIndicator('Status') && <span style={styles.sortIndicator}>{getSortIndicator('Status')}</span>}
             </th>
+            <th style={styles.th} onClick={() => handleSort('Added')} title="Sort by Added — when the job first went into the tracker">
+              Added
+              {getSortIndicator('Added') && <span style={styles.sortIndicator}>{getSortIndicator('Added')}</span>}
+            </th>
             <th style={styles.th} onClick={() => handleSort('Updated')} title="Sort by Updated">
               Updated
               {getSortIndicator('Updated') && <span style={styles.sortIndicator}>{getSortIndicator('Updated')}</span>}
@@ -197,15 +214,8 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
                   }}
                 />
               </td>
-              <td style={styles.td}>
-                {job.updated
-                  ? new Date(job.updated).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
-                  : '-'}
-              </td>
+              <td style={styles.td}>{formatDate(job.created_at)}</td>
+              <td style={styles.td}>{formatDate(job.updated)}</td>
               <td style={styles.td}>
                 {(() => {
                   const sourceKey = (job.source || '').toLowerCase();
