@@ -2,6 +2,16 @@ import axios from 'axios';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
 
+// Axios resolves paths against API_BASE itself, but anything handed to the
+// browser (a tab navigation) needs a full URL: API_BASE is "/" in production,
+// so naive concatenation yields "//api/...", which the browser reads as a
+// protocol-relative URL with "api" as the host.
+export const absoluteApiUrl = (path) =>
+  new URL(
+    path.replace(/^\//, ''),
+    new URL(API_BASE.endsWith('/') ? API_BASE : `${API_BASE}/`, window.location.origin)
+  ).href;
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
@@ -166,7 +176,7 @@ export const openAttachment = async (jobId, attachmentId) => {
     const response = await api.post(
       `/api/jobs/${jobId}/attachments/${attachmentId}/view-token`
     );
-    tab.location = `${API_BASE}${response.data.data.url}`;
+    tab.location = absoluteApiUrl(response.data.data.url);
   } catch (err) {
     console.error('Open failed:', err);
     tab.close();
