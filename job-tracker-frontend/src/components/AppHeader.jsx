@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-// Top-level navigation. The two pages are different jobs of work, not two filters
-// of the same list: one is the tracker you act on, the other is the read-only feed
-// of what the daily scrape found.
+// Top-level navigation. These pages are different jobs of work, not filters of one
+// list: the tracker is what you act on, Discovered is the read-only feed from the
+// daily scrape, and Archived holds applications the weekly sweep has retired.
 const PAGES = [
   { to: '/', label: 'Tracker', end: true },
   { to: '/discovered', label: 'Discovered' },
+  { to: '/archived', label: 'Archived' },
 ];
 
 export default function AppHeader() {

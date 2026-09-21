@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DiscoveredPage from './pages/DiscoveredPage';
+import ArchivedPage from './pages/ArchivedPage';
 import JobTrackerApp from './JobTrackerApp';
 
 function App() {
@@ -15,6 +16,14 @@ function App() {
         element={
           <ProtectedRoute>
             <DiscoveredPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/archived"
+        element={
+          <ProtectedRoute>
+            <ArchivedPage />
           </ProtectedRoute>
         }
       />

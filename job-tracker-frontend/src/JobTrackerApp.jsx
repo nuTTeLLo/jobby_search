@@ -16,8 +16,8 @@ const STATUS_TABS = [
   { value: 'applied', label: 'Applied' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'shortlisted', label: 'Shortlisted' },
-  // Archived is excluded from All by the API, so it needs its own tab to be reachable.
-  { value: 'archived', label: 'Archived' },
+  // No archived tab: the API keeps archived jobs out of this list, and they have
+  // their own page at /archived.
 ];
 
 function JobTrackerApp() {
