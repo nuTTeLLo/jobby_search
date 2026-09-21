@@ -146,6 +146,34 @@ export const downloadAttachment = async (jobId, attachmentId) => {
   }
 };
 
+// Read an attachment in the browser instead of saving it.
+//
+// The tab navigates to a real URL rather than a blob: WebKit (Safari, Orion)
+// downloads blob: PDFs instead of displaying them, and a blob also costs the
+// browser's own viewer chrome. A tab navigation can carry no Authorization
+// header, so the server hands out a short-lived token scoped to this one
+// attachment and the view route authenticates from that. The page itself is
+// sandboxed server-side via CSP, so an uploaded HTML page cannot reach the
+// tracker's stored token.
+export const openAttachment = async (jobId, attachmentId) => {
+  // Opened synchronously, before any await, or the popup blocker eats it.
+  const tab = window.open('', '_blank');
+  if (!tab) {
+    return downloadAttachment(jobId, attachmentId);
+  }
+
+  try {
+    const response = await api.post(
+      `/api/jobs/${jobId}/attachments/${attachmentId}/view-token`
+    );
+    tab.location = `${API_BASE}${response.data.data.url}`;
+  } catch (err) {
+    console.error('Open failed:', err);
+    tab.close();
+    alert('Failed to open file. Please try again.');
+  }
+};
+
 export const deleteAttachment = async (jobId, attachmentId) => {
   await api.delete(`/api/jobs/${jobId}/attachments/${attachmentId}`);
 };

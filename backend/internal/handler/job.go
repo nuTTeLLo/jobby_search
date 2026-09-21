@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"time"
 
+	"job-tracker-backend/internal/auth"
 	"job-tracker-backend/internal/domain"
 	appMiddleware "job-tracker-backend/internal/middleware"
 	"job-tracker-backend/internal/service"
@@ -17,20 +20,28 @@ import (
 )
 
 type JobHandler struct {
-	service *service.JobService
+	service   *service.JobService
+	jwtSecret string
 }
 
-func NewJobHandler(svc *service.JobService) *JobHandler {
-	return &JobHandler{service: svc}
+func NewJobHandler(svc *service.JobService, jwtSecret string) *JobHandler {
+	return &JobHandler{service: svc, jwtSecret: jwtSecret}
 }
 
 type AttachmentHandler struct {
 	service *service.JobService
+	// jwtSecret signs the short-lived tokens that let a browser tab fetch one
+	// attachment without an Authorization header.
+	jwtSecret string
 }
 
-func NewAttachmentHandler(svc *service.JobService) *AttachmentHandler {
-	return &AttachmentHandler{service: svc}
+func NewAttachmentHandler(svc *service.JobService, jwtSecret string) *AttachmentHandler {
+	return &AttachmentHandler{service: svc, jwtSecret: jwtSecret}
 }
+
+// ViewTokenTTL is deliberately short: the token ends up in a URL, so it should
+// outlive the click that made it by little more than the fetch itself.
+const ViewTokenTTL = 2 * time.Minute
 
 func (h *JobHandler) Routes() http.Handler {
 	r := chi.NewRouter()
@@ -43,7 +54,7 @@ func (h *JobHandler) Routes() http.Handler {
 	r.Delete("/{id}", h.DeleteJob)
 	r.Patch("/{id}/status", h.UpdateJobStatus)
 
-	attachmentHandler := NewAttachmentHandler(h.service)
+	attachmentHandler := NewAttachmentHandler(h.service, h.jwtSecret)
 	r.Mount("/api/jobs/{id}/attachments", attachmentHandler.Routes())
 
 	return r
@@ -248,6 +259,7 @@ func (h *AttachmentHandler) Routes() http.Handler {
 	r.Get("/", h.ListAttachments)
 	r.Get("/{id}", h.GetAttachment)
 	r.Get("/{id}/download", h.DownloadAttachment)
+	r.Post("/{id}/view-token", h.CreateViewToken)
 	r.Delete("/{id}", h.DeleteAttachment)
 
 	return r
@@ -388,10 +400,103 @@ func (h *AttachmentHandler) DownloadAttachment(w http.ResponseWriter, r *http.Re
 	}
 
 	// Always a download, never rendered: HTML attachments (interview prep pages)
-	// must not execute on the tracker's origin.
+	// must not execute on the tracker's origin. Viewing goes through
+	// ViewAttachment, which isolates the page instead.
 	w.Header().Set("Content-Type", attachment.MIMEType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", attachment.FileName))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
+	w.Write(attachment.Data)
+}
+
+// CreateViewToken mints a short-lived token for one attachment, so the client
+// can open it as an ordinary URL in a new tab.
+func (h *AttachmentHandler) CreateViewToken(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+
+	attachment, err := h.service.GetAttachment(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+		return
+	}
+	// Ownership is checked here, at mint time, so the view route only has to
+	// trust its own token.
+	if _, err := h.service.GetJob(userID, attachment.JobID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(response.Error("Attachment not found"))
+		return
+	}
+
+	token, err := auth.GenerateViewToken(userID, id, h.jwtSecret, ViewTokenTTL)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error("Failed to create view token"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response.Success(map[string]interface{}{
+		"token":      token,
+		"url":        fmt.Sprintf("/api/attachments/%s/view?t=%s", id, url.QueryEscape(token)),
+		"expires_in": int(ViewTokenTTL.Seconds()),
+	}))
+}
+
+// inlineMIMETypes are the types a browser renders on its own. Everything else
+// is sent as a download even through the view route, since an unrenderable
+// inline response just produces an empty tab.
+var inlineMIMETypes = map[string]bool{
+	"text/html":       true,
+	"application/pdf": true,
+	"text/plain":      true,
+	"text/markdown":   true,
+}
+
+// ViewAttachment serves one attachment for display in a browser tab. It is
+// mounted outside the authenticated group: a tab navigation carries no
+// Authorization header, so the caller presents a view token instead.
+func (h *AttachmentHandler) ViewAttachment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	claims, err := auth.ValidateToken(r.URL.Query().Get("t"), h.jwtSecret)
+	if err != nil || claims.Purpose != auth.PurposeAttachmentView || claims.AttachmentID != id {
+		http.Error(w, "Invalid or expired view link", http.StatusUnauthorized)
+		return
+	}
+
+	attachment, err := h.service.GetAttachment(id)
+	if err != nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+	if _, err := h.service.GetJob(claims.UserID, attachment.JobID); err != nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+
+	disposition := "attachment"
+	if inlineMIMETypes[attachment.MIMEType] {
+		disposition = "inline"
+	}
+	// Markdown has no browser renderer, so show the source rather than
+	// prompting a save.
+	contentType := attachment.MIMEType
+	if contentType == "text/markdown" {
+		contentType = "text/plain; charset=utf-8"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// An uploaded page is rendered on this origin, so sandbox it: without
+	// allow-same-origin the document lands on an opaque origin and its scripts
+	// cannot reach the tracker's own storage or session token.
+	w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-popups allow-forms")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, attachment.FileName))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", attachment.FileSize))
 	w.Write(attachment.Data)
 }

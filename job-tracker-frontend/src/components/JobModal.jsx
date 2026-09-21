@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from '../services/api';
-import { FILE_TYPES, fileTypeLabel } from '../constants/attachments';
+import { getAttachments, uploadAttachment, downloadAttachment, openAttachment, deleteAttachment } from '../services/api';
+import { FILE_TYPES, fileTypeLabel, isViewable, attachmentIcon } from '../constants/attachments';
 
 const JOB_TYPES = [
   { value: '', label: 'Select type...' },
@@ -120,6 +120,14 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
     }
   };
 
+  const handleOpen = async (attachment) => {
+    try {
+      await openAttachment(job.id, attachment.id);
+    } catch (err) {
+      console.error('Failed to open attachment:', err);
+    }
+  };
+
   const handleDownload = async (attachment) => {
     try {
       await downloadAttachment(job.id, attachment.id);
@@ -218,13 +226,22 @@ export default function JobModal({ job, onSave, onClose, onRefresh }) {
                 <div style={styles.attachmentList}>
                   {attachments.map((attachment) => (
                     <div key={attachment.id} style={styles.attachmentItem}>
-                      <span style={styles.attachmentIcon}>📄</span>
+                      <span style={styles.attachmentIcon}>{attachmentIcon(attachment)}</span>
                       <div style={styles.attachmentInfo}>
                         <span style={styles.attachmentName}>{attachment.file_name}</span>
                         <span style={styles.attachmentMeta}>
                           {fileTypeLabel(attachment.file_type)} • {formatFileSize(attachment.file_size)}
                         </span>
                       </div>
+                      {isViewable(attachment) && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpen(attachment)}
+                          style={styles.attachmentBtn}
+                        >
+                          Open
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleDownload(attachment)}

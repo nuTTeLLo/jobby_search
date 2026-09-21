@@ -27,6 +27,11 @@ func Authenticate(jwtSecret string) func(http.Handler) http.Handler {
 
 			tokenStr := strings.TrimPrefix(header, "Bearer ")
 			claims, err := auth.ValidateToken(tokenStr, jwtSecret)
+			// A view token is scoped to one attachment and travels in URLs;
+			// it must never stand in for a session token on the API.
+			if err == nil && claims.Purpose != "" {
+				err = auth.ErrInvalidToken
+			}
 			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
