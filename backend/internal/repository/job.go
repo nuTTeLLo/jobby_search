@@ -43,6 +43,10 @@ func (r *JobRepository) GetAll(filter *domain.JobFilter) ([]domain.Job, int64, e
 		}
 		if filter.Status != "" {
 			query = query.Where("status = ?", filter.Status)
+		} else {
+			// Archived jobs are retired applications; they stay out of the
+			// unfiltered list and are only reachable by asking for them.
+			query = query.Where("status <> ?", string(domain.StatusArchived))
 		}
 		if filter.Source != "" {
 			query = query.Where("source = ?", filter.Source)

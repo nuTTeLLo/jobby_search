@@ -46,6 +46,16 @@ func main() {
 		log.Fatalf("Failed to seed user and backfill jobs: %v", err)
 	}
 
+	// Jobs applied to before applied_at existed have no stamp, so seed one from
+	// created_at — for jobs added by the application workflow the two are the
+	// same day. Only fills nulls, so it is a no-op on every later boot.
+	if err := db.Exec(
+		"UPDATE jobs SET applied_at = created_at WHERE status = ? AND applied_at IS NULL",
+		string(domain.StatusApplied),
+	).Error; err != nil {
+		log.Fatalf("Failed to backfill jobs.applied_at: %v", err)
+	}
+
 	// Now enforce NOT NULL on user_id
 	if err := db.Exec("ALTER TABLE jobs ALTER COLUMN user_id SET NOT NULL").Error; err != nil {
 		log.Fatalf("Failed to add NOT NULL constraint to jobs.user_id: %v", err)
@@ -57,8 +67,8 @@ func main() {
 	jobService := service.NewJobService(jobRepo, cfg.MCPServerURL)
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiration)
 	discoveredService := service.NewDiscoveredJobService(discoveredRepo)
-	jobHandler := handler.NewJobHandler(jobService)
-	attachmentHandler := handler.NewAttachmentHandler(jobService)
+	jobHandler := handler.NewJobHandler(jobService, cfg.JWTSecret)
+	attachmentHandler := handler.NewAttachmentHandler(jobService, cfg.JWTSecret)
 	authHandler := handler.NewAuthHandler(authService)
 	discoveredHandler := handler.NewDiscoveredJobHandler(discoveredService)
 
@@ -82,6 +92,11 @@ func main() {
 
 	// Public auth routes
 	r.Mount("/api/auth", authHandler.PublicRoutes())
+
+	// Viewing an attachment in a browser tab is a plain navigation, which can
+	// carry no Authorization header, so this route authenticates itself from a
+	// short-lived single-attachment token in the query string.
+	r.Get("/api/attachments/{id}/view", attachmentHandler.ViewAttachment)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {

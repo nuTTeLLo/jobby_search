@@ -15,25 +15,34 @@ const (
 	StatusApplied     JobStatus = "applied"
 	StatusRejected    JobStatus = "rejected"
 	StatusShortlisted JobStatus = "shortlisted"
+	// StatusArchived retires an application that never got an answer. The
+	// weekly sweep moves applied jobs here once AppliedAt is over six months
+	// old, and list queries hide them unless asked for by name.
+	StatusArchived JobStatus = "archived"
 )
 
 type Job struct {
-	ID           string       `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	UserID       string       `json:"user_id" gorm:"type:varchar(36);index;index:idx_jobs_user_created,priority:1"`
-	JobTitle     string       `json:"job_title" gorm:"not null;type:varchar(500)"`
-	CompanyName  string       `json:"company_name" gorm:"type:varchar(500)"`
-	Location     string       `json:"location" gorm:"type:varchar(500)"`
-	JobURL       string       `json:"job_url" gorm:"type:varchar(2000)"`
-	Description  string       `json:"description" gorm:"type:text"`
-	Salary       string       `json:"salary" gorm:"type:varchar(200)"`
-	JobType      string       `json:"job_type" gorm:"type:varchar(100)"`
-	IsRemote     bool         `json:"is_remote" gorm:"default:false"`
-	EasyApply    bool         `json:"easy_apply" gorm:"default:false"`
-	ViaRecruiter bool         `json:"via_recruiter" gorm:"default:false"`
-	Source       string       `json:"source" gorm:"type:varchar(100)"`
-	Status       string       `json:"status" gorm:"default:'new';type:varchar(50);index"`
-	Notes        string       `json:"notes" gorm:"type:text"`
-	Attachments  []Attachment `json:"attachments" gorm:"foreignKey:JobID;constraint:OnDelete:CASCADE"`
+	ID           string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID       string `json:"user_id" gorm:"type:varchar(36);index;index:idx_jobs_user_created,priority:1"`
+	JobTitle     string `json:"job_title" gorm:"not null;type:varchar(500)"`
+	CompanyName  string `json:"company_name" gorm:"type:varchar(500)"`
+	Location     string `json:"location" gorm:"type:varchar(500)"`
+	JobURL       string `json:"job_url" gorm:"type:varchar(2000)"`
+	Description  string `json:"description" gorm:"type:text"`
+	Salary       string `json:"salary" gorm:"type:varchar(200)"`
+	JobType      string `json:"job_type" gorm:"type:varchar(100)"`
+	IsRemote     bool   `json:"is_remote" gorm:"default:false"`
+	EasyApply    bool   `json:"easy_apply" gorm:"default:false"`
+	ViaRecruiter bool   `json:"via_recruiter" gorm:"default:false"`
+	Source       string `json:"source" gorm:"type:varchar(100)"`
+	Status       string `json:"status" gorm:"default:'new';type:varchar(50);index"`
+	Notes        string `json:"notes" gorm:"type:text"`
+	// AppliedAt is stamped the first time a job reaches "applied" and left
+	// alone afterwards, so the archive sweep measures time since the
+	// application rather than time since the last edit. Null for jobs never
+	// applied to.
+	AppliedAt   *time.Time   `json:"applied_at"`
+	Attachments []Attachment `json:"attachments" gorm:"foreignKey:JobID;constraint:OnDelete:CASCADE"`
 	// Paired with UserID in idx_jobs_user_created: every list query filters by
 	// user and orders by created_at.
 	CreatedAt time.Time `json:"created_at" gorm:"index:idx_jobs_user_created,priority:2,sort:desc"`

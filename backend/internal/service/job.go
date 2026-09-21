@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"job-tracker-backend/internal/domain"
 	"job-tracker-backend/internal/repository"
@@ -194,6 +195,7 @@ func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) 
 	}
 	if input.Status != "" {
 		job.Status = input.Status
+		stampApplied(job)
 	}
 	if input.Notes != "" {
 		job.Notes = input.Notes
@@ -210,12 +212,23 @@ func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) 
 	return job, nil
 }
 
+// stampApplied records when a job first reached "applied". It never overwrites
+// an existing stamp: re-applying, or passing back through "applied" on the way
+// to archived, must not restart the six-month clock the sweep measures.
+func stampApplied(job *domain.Job) {
+	if job.Status == string(domain.StatusApplied) && job.AppliedAt == nil {
+		now := time.Now()
+		job.AppliedAt = &now
+	}
+}
+
 func (s *JobService) UpdateJobStatus(userID, id string, status string) (*domain.Job, error) {
 	job, err := s.repo.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}
 	job.Status = status
+	stampApplied(job)
 
 	if err := s.repo.Update(job); err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ const statusColors = {
   applied: '#0d6efd',
   rejected: '#dc3545',
   shortlisted: '#198754',
+  archived: '#495057',
 };
 
 const statusLabels = {
@@ -12,6 +13,7 @@ const statusLabels = {
   applied: 'Applied',
   rejected: 'Rejected',
   shortlisted: 'Shortlisted',
+  archived: 'Archived',
 };
 
 export default function StatusBadge({ status, onClick, className }) {
