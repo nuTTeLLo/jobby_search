@@ -100,9 +100,27 @@ type JobFilter struct {
 	// Search is a free-text query matched against the fields shown in the
 	// tracked jobs table. Whitespace-separated terms are ANDed together.
 	Search string `query:"q"`
+	// Sort names a column from SortColumns; Order is "asc" or "desc". Sorting
+	// has to happen here rather than in the client, which only ever holds one
+	// page and would otherwise sort that page alone.
+	Sort   string `query:"sort"`
+	Order  string `query:"order"`
 	UserID string
 	Limit  int
 	Offset int
+}
+
+// SortColumns maps the sort keys the API accepts to real columns, which also
+// keeps the value out of the SQL string.
+var SortColumns = map[string]string{
+	"job_title":    "job_title",
+	"company_name": "company_name",
+	"location":     "location",
+	"status":       "status",
+	"source":       "source",
+	"created_at":   "created_at",
+	"applied_at":   "applied_at",
+	"updated_at":   "updated_at",
 }
 
 // JobPage is one page of tracked jobs plus the total matching the filter,

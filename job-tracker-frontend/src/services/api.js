@@ -41,10 +41,22 @@ api.interceptors.response.use(
 
 // Tracked jobs are paginated server-side; `q` is the free-text filter, matched
 // against title, company, location, type, source and status across all pages.
-export const getJobs = async ({ status = '', q = '', page = 1, pageSize = 25 } = {}) => {
+export const getJobs = async ({
+  status = '',
+  q = '',
+  page = 1,
+  pageSize = 25,
+  sort = '',
+  order = 'asc',
+} = {}) => {
   const params = { page, page_size: pageSize };
   if (status) params.status = status;
   if (q) params.q = q;
+  // Sorting is server-side so it covers every page, not just the visible one.
+  if (sort) {
+    params.sort = sort;
+    params.order = order;
+  }
   const response = await api.get('/api/jobs', { params });
   const data = response.data.data || {};
   return {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AppHeader from '../components/AppHeader';
 import JobList from '../components/JobList';
 import JobModal from '../components/JobModal';
+import Pagination from '../components/Pagination';
 import { getJobs, updateJob, updateJobStatus, deleteJob } from '../services/api';
 
 const PAGE_SIZE = 25;
@@ -19,6 +20,8 @@ export default function ArchivedPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [editingJob, setEditingJob] = useState(null);
+  const [sort, setSort] = useState('');
+  const [order, setOrder] = useState('asc');
 
   useEffect(() => {
     const timer = setTimeout(() => setAppliedFilter(filterText.trim()), FILTER_DEBOUNCE_MS);
@@ -27,7 +30,7 @@ export default function ArchivedPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedFilter]);
+  }, [appliedFilter, sort, order]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -37,6 +40,8 @@ export default function ArchivedPage() {
         q: appliedFilter,
         page,
         pageSize: PAGE_SIZE,
+        sort,
+        order,
       });
       setJobs(data.jobs);
       setTotal(data.total);
@@ -49,7 +54,7 @@ export default function ArchivedPage() {
     } finally {
       setLoading(false);
     }
-  }, [appliedFilter, page]);
+  }, [appliedFilter, page, sort, order]);
 
   useEffect(() => {
     fetchJobs();
@@ -149,31 +154,17 @@ export default function ArchivedPage() {
           <>
             <JobList
               jobs={jobs}
+              sort={sort}
+              order={order}
+              onSort={(key, direction) => {
+                setSort(key);
+                setOrder(direction);
+              }}
               onStatusChange={handleStatusChange}
               onEdit={setEditingJob}
               onDelete={handleDelete}
             />
-            {totalPages > 1 && (
-              <div style={styles.pagination}>
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  style={page <= 1 ? styles.pageBtnDisabled : styles.pageBtn}
-                >
-                  Previous
-                </button>
-                <span style={styles.pageStatus}>
-                  Page {page} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  style={page >= totalPages ? styles.pageBtnDisabled : styles.pageBtn}
-                >
-                  Next
-                </button>
-              </div>
-            )}
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           </>
         )}
       </main>
@@ -249,34 +240,6 @@ const styles = {
   loading: {
     padding: '40px',
     textAlign: 'center',
-    color: '#6c757d',
-  },
-  pagination: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '12px',
-    padding: '16px 0',
-  },
-  pageBtn: {
-    padding: '6px 14px',
-    fontSize: '13px',
-    border: '1px solid #ced4da',
-    borderRadius: '4px',
-    backgroundColor: 'white',
-    cursor: 'pointer',
-  },
-  pageBtnDisabled: {
-    padding: '6px 14px',
-    fontSize: '13px',
-    border: '1px solid #e9ecef',
-    borderRadius: '4px',
-    backgroundColor: '#f8f9fa',
-    color: '#adb5bd',
-    cursor: 'not-allowed',
-  },
-  pageStatus: {
-    fontSize: '13px',
     color: '#6c757d',
   },
 };

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import JobSearch from './components/JobSearch';
 import JobList from './components/JobList';
 import JobModal from './components/JobModal';
+import Pagination from './components/Pagination';
 import AppHeader from './components/AppHeader';
 import { getJobs, createJob, updateJob, deleteJob, updateJobStatus, searchJobs } from './services/api';
 import './App.css';
@@ -35,6 +36,10 @@ function JobTrackerApp() {
   const [appliedFilter, setAppliedFilter] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  // Sorting is applied by the API across the whole result set, so it lives
+  // here with the other query state rather than inside the table.
+  const [sort, setSort] = useState('');
+  const [order, setOrder] = useState('asc');
 
   useEffect(() => {
     const timer = setTimeout(() => setAppliedFilter(filterText.trim()), FILTER_DEBOUNCE_MS);
@@ -44,7 +49,7 @@ function JobTrackerApp() {
   // Any change to what's being listed starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, appliedFilter]);
+  }, [statusFilter, appliedFilter, sort, order]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -54,6 +59,8 @@ function JobTrackerApp() {
         q: appliedFilter,
         page,
         pageSize: PAGE_SIZE,
+        sort,
+        order,
       });
       setJobs(data.jobs);
       setTotal(data.total);
@@ -66,7 +73,7 @@ function JobTrackerApp() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, appliedFilter, page]);
+  }, [statusFilter, appliedFilter, page, sort, order]);
 
   useEffect(() => {
     fetchJobs();
@@ -194,6 +201,11 @@ function JobTrackerApp() {
     } catch (error) {
       showMessage('Failed to delete job: ' + error.message, 'error');
     }
+  };
+
+  const handleSort = (key, direction) => {
+    setSort(key);
+    setOrder(direction);
   };
 
   const handleStatusChange = async (id, newStatus) => {
@@ -350,31 +362,14 @@ function JobTrackerApp() {
           <>
             <JobList
               jobs={jobs}
+              sort={sort}
+              order={order}
+              onSort={handleSort}
               onStatusChange={handleStatusChange}
               onEdit={handleEdit}
               onDelete={handleDelete}
             />
-            {totalPages > 1 && (
-              <div style={styles.pagination}>
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  style={page <= 1 ? styles.pageBtnDisabled : styles.pageBtn}
-                >
-                  Previous
-                </button>
-                <span style={styles.pageStatus}>
-                  Page {page} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  style={page >= totalPages ? styles.pageBtnDisabled : styles.pageBtn}
-                >
-                  Next
-                </button>
-              </div>
-            )}
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           </>
         )}
       </main>

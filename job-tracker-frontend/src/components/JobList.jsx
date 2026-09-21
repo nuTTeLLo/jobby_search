@@ -22,67 +22,32 @@ const formatDate = (value) =>
       })
     : '-';
 
-export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
+// Column header -> the sort key the API understands. Sorting is server-side:
+// the client only ever holds one page, so sorting here would order that page
+// alone rather than the whole result set.
+const SORT_KEYS = {
+  'Job Title': 'job_title',
+  Company: 'company_name',
+  Location: 'location',
+  Status: 'status',
+  Added: 'created_at',
+  Updated: 'updated_at',
+  Source: 'source',
+};
+
+export default function JobList({ jobs, sort, order, onSort, onStatusChange, onEdit, onDelete }) {
   const [statusMenu, setStatusMenu] = useState(null); // { jobId, position: { top, left } }
-  const [sortColumn, setSortColumn] = useState(null);
-  const [sortDirection, setSortDirection] = useState('asc');
 
   const handleSort = (column) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
+    const key = SORT_KEYS[column];
+    // Same column toggles direction; a new one starts ascending.
+    onSort(key, sort === key && order === 'asc' ? 'desc' : 'asc');
   };
 
   const getSortIndicator = (column) => {
-    if (sortColumn !== column) return null;
-    return sortDirection === 'asc' ? '▲' : '▼';
+    if (sort !== SORT_KEYS[column]) return null;
+    return order === 'asc' ? '▲' : '▼';
   };
-
-  const sortedJobs = [...jobs].sort((a, b) => {
-    if (!sortColumn) return 0;
-
-    let aVal, bVal;
-
-    switch (sortColumn) {
-      case 'Job Title':
-        aVal = a.job_title || '';
-        bVal = b.job_title || '';
-        break;
-      case 'Company':
-        aVal = a.company_name || '';
-        bVal = b.company_name || '';
-        break;
-      case 'Location':
-        aVal = a.location || '';
-        bVal = b.location || '';
-        break;
-      case 'Status':
-        aVal = a.status || '';
-        bVal = b.status || '';
-        break;
-      case 'Added':
-        aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
-        bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
-        break;
-      case 'Updated':
-        aVal = a.updated ? new Date(a.updated).getTime() : 0;
-        bVal = b.updated ? new Date(b.updated).getTime() : 0;
-        break;
-      case 'Source':
-        aVal = a.source || '';
-        bVal = b.source || '';
-        break;
-      default:
-        return 0;
-    }
-
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
 
   const handleStatusClick = (job, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -181,7 +146,7 @@ export default function JobList({ jobs, onStatusChange, onEdit, onDelete }) {
           </tr>
         </thead>
         <tbody>
-          {sortedJobs.map((job) => (
+          {jobs.map((job) => (
             <tr key={job.id} style={styles.tr}>
               <td style={styles.td}>
                 <a

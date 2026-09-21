@@ -69,6 +69,8 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		Status: query.Get("status"),
 		Source: query.Get("source"),
 		Search: query.Get("q"),
+		Sort:   query.Get("sort"),
+		Order:  query.Get("order"),
 	}
 
 	page, _ := strconv.Atoi(query.Get("page"))

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"job-tracker-backend/internal/domain"
@@ -69,8 +70,20 @@ func (r *JobRepository) GetAll(filter *domain.JobFilter) ([]domain.Job, int64, e
 	}
 
 	// id is a tiebreaker so rows can't shift between pages when two jobs share
-	// a created_at.
-	query = query.Order("created_at DESC, id DESC")
+	// the sorted value.
+	column, direction := "created_at", "DESC"
+	if filter != nil {
+		if mapped, ok := domain.SortColumns[filter.Sort]; ok {
+			column = mapped
+			direction = "ASC"
+			if strings.EqualFold(filter.Order, "desc") {
+				direction = "DESC"
+			}
+		}
+	}
+	// Jobs never applied to have no applied_at; keep those nulls at the end
+	// either way rather than letting them lead a descending sort.
+	query = query.Order(fmt.Sprintf("%s %s NULLS LAST, id DESC", column, direction))
 	if filter != nil {
 		if filter.Limit > 0 {
 			query = query.Limit(filter.Limit)
