@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import JobSearch from './components/JobSearch';
 import JobList from './components/JobList';
 import JobModal from './components/JobModal';
@@ -40,6 +40,10 @@ function JobTrackerApp() {
   // here with the other query state rather than inside the table.
   const [sort, setSort] = useState('');
   const [order, setOrder] = useState('asc');
+  // Changing the sort or the tab also resets the page, so two fetches can be in
+  // flight at once; without this the slower, older one wins and the list shows
+  // the previous sort. Only the newest request may write to state.
+  const requestId = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setAppliedFilter(filterText.trim()), FILTER_DEBOUNCE_MS);
@@ -49,9 +53,10 @@ function JobTrackerApp() {
   // Any change to what's being listed starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, appliedFilter, sort, order]);
+  }, [statusFilter, appliedFilter]);
 
   const fetchJobs = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     try {
       const data = await getJobs({
@@ -62,6 +67,7 @@ function JobTrackerApp() {
         sort,
         order,
       });
+      if (id !== requestId.current) return; // superseded
       setJobs(data.jobs);
       setTotal(data.total);
       // Deleting the last row of the last page can leave us past the end.
@@ -69,9 +75,10 @@ function JobTrackerApp() {
         setPage(page - 1);
       }
     } catch (error) {
+      if (id !== requestId.current) return;
       showMessage('Failed to fetch jobs: ' + error.message, 'error');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, [statusFilter, appliedFilter, page, sort, order]);
 
@@ -203,9 +210,13 @@ function JobTrackerApp() {
     }
   };
 
+  // A new sort re-orders the whole list, so page 1 is the only sensible landing
+  // spot; set it here rather than leaving it to an effect, which would fetch the
+  // old page first.
   const handleSort = (key, direction) => {
     setSort(key);
     setOrder(direction);
+    setPage(1);
   };
 
   const handleStatusChange = async (id, newStatus) => {

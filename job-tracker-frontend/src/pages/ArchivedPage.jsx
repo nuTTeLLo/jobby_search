@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AppHeader from '../components/AppHeader';
 import JobList from '../components/JobList';
 import JobModal from '../components/JobModal';
@@ -22,6 +22,9 @@ export default function ArchivedPage() {
   const [editingJob, setEditingJob] = useState(null);
   const [sort, setSort] = useState('');
   const [order, setOrder] = useState('asc');
+  // See JobTrackerApp: only the newest request may write to state, or a slower
+  // earlier fetch lands last and undoes the sort.
+  const requestId = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setAppliedFilter(filterText.trim()), FILTER_DEBOUNCE_MS);
@@ -30,9 +33,10 @@ export default function ArchivedPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedFilter, sort, order]);
+  }, [appliedFilter]);
 
   const fetchJobs = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     try {
       const data = await getJobs({
@@ -43,6 +47,7 @@ export default function ArchivedPage() {
         sort,
         order,
       });
+      if (id !== requestId.current) return; // superseded
       setJobs(data.jobs);
       setTotal(data.total);
       // Restoring the last row of the last page can leave us past the end.
@@ -50,9 +55,10 @@ export default function ArchivedPage() {
         setPage(page - 1);
       }
     } catch (error) {
+      if (id !== requestId.current) return;
       showMessage('Failed to fetch archived jobs: ' + error.message, 'error');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, [appliedFilter, page, sort, order]);
 
@@ -159,6 +165,7 @@ export default function ArchivedPage() {
               onSort={(key, direction) => {
                 setSort(key);
                 setOrder(direction);
+                setPage(1);
               }}
               onStatusChange={handleStatusChange}
               onEdit={setEditingJob}
