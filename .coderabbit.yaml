@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit also reads AGENTS.md / CLAUDE.md as coding guidelines; the path
+# instructions below only cover what those files don't already say.
+language: en-AU
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  tools:
+    github-checks:
+      enabled: true
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/bun.lock"
+    - "!**/go.sum"
+    - "!.venv/**"
+    - "!backups/**"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        This repository is public. Flag anything that looks like a credential,
+        token, database host/password, or personal data (names, emails, CV
+        contents) being committed.
+    - path: "backend/**/*.go"
+      instructions: |
+        - Keep the Handler → Service → Repository layering; handlers must not
+          touch GORM directly.
+        - Errors are wrapped with fmt.Errorf("context: %w", err).
+        - Schema changes go through GORM auto-migration on startup against a
+          live Postgres with existing data: flag changes that would drop or
+          retype columns, or add NOT NULL columns without a default.
+        - The attachment file-type allowlist in internal/service/job.go must
+          stay in sync with job-tracker-frontend/src/constants/attachments.js.
+    - path: "job-tracker-frontend/src/**/*.{js,jsx}"
+      instructions: |
+        - Styling is inline CSS-in-JS; no CSS files or modules.
+        - All HTTP calls go through src/services/api.js (axios).
+        - Watch for stale async responses overwriting newer state (e.g. an
+          older list fetch resolving after a newer one).
+        - The attachment file-type allowlist in src/constants/attachments.js
+          must stay in sync with backend/internal/service/job.go.
+    - path: "daily-scrape/**"
+      instructions: |
+        Runs as a k3s CronJob and must hold no local state: the API upserts on
+        (user_id, external_id). Keep requests to LinkedIn's public guest
+        endpoints polite (rate limiting, backoff) and resilient to markup changes.
+
+chat:
+  auto_reply: true
