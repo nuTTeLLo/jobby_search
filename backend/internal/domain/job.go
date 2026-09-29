@@ -15,6 +15,9 @@ const (
 	StatusApplied     JobStatus = "applied"
 	StatusRejected    JobStatus = "rejected"
 	StatusShortlisted JobStatus = "shortlisted"
+	// StatusInterview marks a job with an interview booked. The job-search
+	// workflow sets it when interview prep is produced for the job.
+	StatusInterview JobStatus = "interview"
 	// StatusArchived retires an application that never got an answer. The
 	// weekly sweep moves applied jobs here once AppliedAt is over six months
 	// old, and list queries hide them unless asked for by name.

@@ -4,6 +4,7 @@ const statusColors = {
   applied: '#0d6efd',
   rejected: '#dc3545',
   shortlisted: '#198754',
+  interview: '#6f42c1',
   archived: '#495057',
 };
 
@@ -13,6 +14,7 @@ const statusLabels = {
   applied: 'Applied',
   rejected: 'Rejected',
   shortlisted: 'Shortlisted',
+  interview: 'Interview',
   archived: 'Archived',
 };
 

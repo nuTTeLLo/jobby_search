@@ -3,7 +3,7 @@ import StatusBadge from './StatusBadge';
 import { API_BASE, downloadAttachment, openAttachment } from '../services/api';
 import { fileTypeLabel, isViewable, attachmentIcon } from '../constants/attachments';
 
-const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted', 'archived'];
+const STATUSES = ['new', 'viewed', 'applied', 'rejected', 'shortlisted', 'interview', 'archived'];
 
 const SOURCE_BADGES = {
   linkedin: { backgroundColor: '#0077b5', color: 'white', label: 'LinkedIn' },
