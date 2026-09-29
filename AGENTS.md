@@ -236,7 +236,7 @@ docker cp job-tracker-db:/tmp/backup.dump ./
 | **Errors** | Return error objects, never throw |
 | **Logging** | Use winston logger |
 
-**Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`, `archived`
+**Job status values**: `new`, `viewed`, `applied`, `rejected`, `shortlisted`, `interview`, `archived`
 (`archived` retires an application that never got an answer — `GET /api/jobs` hides it
 unless `?status=archived` asks for it. `applied_at` is stamped the first time a job
 reaches `applied`, and the weekly sweep in the job-search workflow archives anything
