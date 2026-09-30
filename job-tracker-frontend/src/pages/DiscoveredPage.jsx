@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AppHeader from '../components/AppHeader';
 import DiscoveredList from '../components/DiscoveredList';
 import { getDiscoveredJobs, dismissDiscoveredJob } from '../services/api';
@@ -11,39 +11,44 @@ export default function DiscoveredPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Rows dismissed in this session, including ones whose request is still in flight.
+  // Every list we receive is filtered through it, so a reload that races a dismiss
+  // cannot bring back a row the user has just hidden.
+  const hiddenIds = useRef(new Set());
+
   useEffect(() => {
     fetchDiscovered();
   }, []);
 
-  const fetchDiscovered = async () => {
-    setLoading(true);
+  const fetchDiscovered = async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
     try {
-      setJobs(await getDiscoveredJobs());
+      const fetched = await getDiscoveredJobs();
+      setJobs(fetched.filter((job) => !hiddenIds.current.has(job.id)));
       setError(null);
     } catch (err) {
       setError('Failed to load discovered jobs: ' + err.message);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
   // A posting seen on several boards is several rows; dismissing it hides them all.
   const handleDismiss = async (ids) => {
     // Drop it locally straight away; it is hidden server-side either way.
-    const previous = jobs;
-    setJobs((prev) => prev.filter((job) => !ids.includes(job.id)));
-    const results = await Promise.allSettled(ids.map((id) => dismissDiscoveredJob(id)));
-    const failed = results.find((result) => result.status === 'rejected');
-    if (!failed) return;
+    ids.forEach((id) => hiddenIds.current.add(id));
+    setJobs((prev) => prev.filter((job) => !hiddenIds.current.has(job.id)));
 
-    // Some rows may already be dismissed server-side; for a single row it is safe to
-    // restore it, otherwise ask the server what is actually still visible.
-    if (ids.length === 1) {
-      setJobs(previous);
-    } else {
-      await fetchDiscovered();
-    }
-    setError('Failed to dismiss: ' + failed.reason.message);
+    const results = await Promise.allSettled(ids.map((id) => dismissDiscoveredJob(id)));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (!failures.length) return;
+
+    // Only the rows whose request failed come back; the server says what else is left.
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') hiddenIds.current.delete(ids[i]);
+    });
+    await fetchDiscovered({ quiet: true });
+    setError('Failed to dismiss: ' + failures[0].reason.message);
   };
 
   return (
