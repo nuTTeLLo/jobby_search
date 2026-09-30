@@ -32,12 +32,18 @@ export default function DiscoveredPage() {
     // Drop it locally straight away; it is hidden server-side either way.
     const previous = jobs;
     setJobs((prev) => prev.filter((job) => !ids.includes(job.id)));
-    try {
-      await Promise.all(ids.map((id) => dismissDiscoveredJob(id)));
-    } catch (err) {
+    const results = await Promise.allSettled(ids.map((id) => dismissDiscoveredJob(id)));
+    const failed = results.find((result) => result.status === 'rejected');
+    if (!failed) return;
+
+    // Some rows may already be dismissed server-side; for a single row it is safe to
+    // restore it, otherwise ask the server what is actually still visible.
+    if (ids.length === 1) {
       setJobs(previous);
-      setError('Failed to dismiss: ' + err.message);
+    } else {
+      await fetchDiscovered();
     }
+    setError('Failed to dismiss: ' + failed.reason.message);
   };
 
   return (

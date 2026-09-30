@@ -50,7 +50,7 @@ settings come from the environment and override the file:
 | Env var | Purpose |
 |---|---|
 | `TRACKER_URL` | Tracker base URL (in-cluster: `http://job-tracker-backend:8080`) |
-| `TRACKER_USER_ID`, `TRACKER_EMAIL` | Claims for the minted token |
+| `TRACKER_USER_ID`, `TRACKER_EMAIL` | Claims for the minted token (not in `config.json`; the CronJob sets them) |
 | `JWT_SECRET` | Signing secret, from the `job-tracker-secret` secret |
 | `MCP_URL` | JobSpy MCP server (default `http://jobspy-mcp:9423`) |
 | `SEARCH_LOCATION`, `HOURS_OLD`, `SITES` | Occasional overrides without rebuilding |
@@ -64,6 +64,7 @@ on :8081), then:
 MCP_URL=http://localhost:9423 \
 TRACKER_URL=http://localhost:8081 \
 TRACKER_USER_ID=<your user id> \
+TRACKER_EMAIL=<your login email> \
 JWT_SECRET=<dev secret> \
 python3 board_scrape.py --dry-run
 ```

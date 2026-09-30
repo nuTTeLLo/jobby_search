@@ -19,6 +19,7 @@ import json
 import os
 import random
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -45,6 +46,10 @@ SITES = {
 APPLY_EASY = "easy_apply"
 APPLY_EXTERNAL = "external"
 APPLY_UNKNOWN = "unknown"
+
+
+class BoardUnavailable(Exception):
+    """A board's MCP search timed out; the rest of that board is skipped."""
 
 
 # --------------------------------------------------------------------------- config
@@ -131,6 +136,10 @@ def search_board(cfg, site, term, warnings):
 
     Boards are searched one at a time so a board that errors or throttles costs
     only its own results, and so each gets its own date window (see seek below).
+
+    Not retried: the MCP kills its JobSpy child after five minutes, so a timeout
+    here means the search or the server is stuck, and asking again only queues more
+    work on it. Raises BoardUnavailable so the caller skips the board's other terms.
     """
     hours = cfg["hours_old"]
     if site == "seek":
@@ -139,28 +148,36 @@ def search_board(cfg, site, term, warnings):
         # days; within_window trims the extra back off.
         hours = max(hours, 48)
 
-    body = request_with_retry(
-        cfg["mcp_url"].rstrip("/") + "/api",
-        "%s '%s'" % (site, term),
-        warnings,
-        data={
-            "siteNames": site,
-            "searchTerm": term,
-            "location": cfg["location"],
-            "hoursOld": hours,
-            "resultsWanted": cfg.get("results_per_search", 100),
-            "countryIndeed": cfg.get("country_indeed", "australia"),
-            "timeout": 300000,
-        },
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        timeout=330,
-    )
-    if body is None:
+    label = "%s '%s'" % (site, term)
+    try:
+        body = http_request(
+            cfg["mcp_url"].rstrip("/") + "/api",
+            data={
+                "siteNames": site,
+                "searchTerm": term,
+                "location": cfg["location"],
+                "hoursOld": hours,
+                "resultsWanted": cfg.get("results_per_search", 100),
+                "countryIndeed": cfg.get("country_indeed", "australia"),
+                "timeout": 300000,
+            },
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            timeout=330,
+        )
+    except (TimeoutError, socket.timeout) as exc:
+        raise BoardUnavailable("%s timed out" % label) from exc
+    except urllib.error.HTTPError as exc:
+        warnings.append("%s failed: HTTP %s" % (label, exc.code))
+        return []
+    except (urllib.error.URLError, OSError) as exc:
+        if isinstance(getattr(exc, "reason", None), (TimeoutError, socket.timeout)):
+            raise BoardUnavailable("%s timed out" % label) from exc
+        warnings.append("%s failed: %s" % (label, exc))
         return []
     try:
         return json.loads(body).get("jobs") or []
     except ValueError:
-        warnings.append("%s '%s' returned invalid JSON" % (site, term))
+        warnings.append("%s returned invalid JSON" % label)
         return []
 
 
@@ -354,6 +371,14 @@ def main():
     if unknown_sites:
         print("FATAL: unsupported board(s): %s" % ", ".join(unknown_sites), file=sys.stderr)
         return 2
+    # Checked before scraping so a misconfigured run fails in seconds, not after it.
+    missing = [
+        key for key in ("tracker_url", "tracker_user_id", "tracker_email", "jwt_secret")
+        if not cfg.get(key)
+    ]
+    if missing and not args.dry_run:
+        print("FATAL: missing tracker settings: %s" % ", ".join(missing), file=sys.stderr)
+        return 2
 
     run_time = datetime.now().astimezone()
     warnings = []
@@ -365,7 +390,11 @@ def main():
     candidates = {}
     for site in cfg["sites"]:
         for term in cfg["search_terms"]:
-            results = search_board(cfg, site, term, warnings)
+            try:
+                results = search_board(cfg, site, term, warnings)
+            except BoardUnavailable as exc:
+                warnings.append("%s; skipping %s's remaining searches." % (exc, site))
+                break
             counts[(site, term)] = len(results)
             if args.verbose:
                 print("  %s '%s' -> %d" % (site, term, len(results)), file=sys.stderr)
