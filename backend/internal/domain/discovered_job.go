@@ -28,11 +28,14 @@ type DiscoveredJob struct {
 	UserID string `json:"user_id" gorm:"type:varchar(36);index;uniqueIndex:idx_discovered_user_external"`
 	// ExternalID is the job board's own id (for LinkedIn, the jobPosting urn digits).
 	// Unique per user so a re-scrape updates the existing row instead of duplicating it.
-	ExternalID    string    `json:"external_id" gorm:"type:varchar(64);uniqueIndex:idx_discovered_user_external"`
-	JobTitle      string    `json:"job_title" gorm:"not null;type:varchar(500)"`
-	CompanyName   string    `json:"company_name" gorm:"type:varchar(500)"`
-	Location      string    `json:"location" gorm:"type:varchar(500)"`
-	JobURL        string    `json:"job_url" gorm:"type:varchar(2000)"`
+	ExternalID  string `json:"external_id" gorm:"type:varchar(64);uniqueIndex:idx_discovered_user_external"`
+	JobTitle    string `json:"job_title" gorm:"not null;type:varchar(500)"`
+	CompanyName string `json:"company_name" gorm:"type:varchar(500)"`
+	Location    string `json:"location" gorm:"type:varchar(500)"`
+	JobURL      string `json:"job_url" gorm:"type:varchar(2000)"`
+	// ApplyURL is the employer's own application page, when the board exposes it
+	// publicly (Indeed does; LinkedIn and Seek only show it after sign-in).
+	ApplyURL      string    `json:"apply_url" gorm:"type:varchar(2000)"`
 	Source        string    `json:"source" gorm:"type:varchar(100)"`
 	PostedDate    string    `json:"posted_date" gorm:"type:varchar(20)"`
 	ApplyType     string    `json:"apply_type" gorm:"type:varchar(20);default:'unknown'"`
@@ -41,6 +44,11 @@ type DiscoveredJob struct {
 	DiscoveredAt  time.Time `json:"discovered_at" gorm:"index"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+
+	// MatchKey is shared by postings that look like the same role on different
+	// boards. Computed on read rather than stored, so the matching rule can change
+	// without a backfill.
+	MatchKey string `json:"match_key" gorm:"-"`
 }
 
 func (d *DiscoveredJob) BeforeCreate(tx *gorm.DB) error {
@@ -63,6 +71,7 @@ type DiscoveredJobInput struct {
 	CompanyName string `json:"company_name"`
 	Location    string `json:"location"`
 	JobURL      string `json:"job_url"`
+	ApplyURL    string `json:"apply_url"`
 	Source      string `json:"source"`
 	PostedDate  string `json:"posted_date"`
 	ApplyType   string `json:"apply_type"`

@@ -3,8 +3,8 @@ import AppHeader from '../components/AppHeader';
 import DiscoveredList from '../components/DiscoveredList';
 import { getDiscoveredJobs, dismissDiscoveredJob } from '../services/api';
 
-// Read-only feed of postings found by the daily LinkedIn scrape. Deliberately has
-// no "add to tracker" action: application status is tracked on LinkedIn itself,
+// Read-only feed of postings found by the daily job board scrapes. Deliberately has
+// no "add to tracker" action: application status is tracked on the boards themselves,
 // and scraped rows never enter the jobs table.
 export default function DiscoveredPage() {
   const [jobs, setJobs] = useState([]);
@@ -27,12 +27,13 @@ export default function DiscoveredPage() {
     }
   };
 
-  const handleDismiss = async (id) => {
+  // A posting seen on several boards is several rows; dismissing it hides them all.
+  const handleDismiss = async (ids) => {
     // Drop it locally straight away; it is hidden server-side either way.
     const previous = jobs;
-    setJobs((prev) => prev.filter((job) => job.id !== id));
+    setJobs((prev) => prev.filter((job) => !ids.includes(job.id)));
     try {
-      await dismissDiscoveredJob(id);
+      await Promise.all(ids.map((id) => dismissDiscoveredJob(id)));
     } catch (err) {
       setJobs(previous);
       setError('Failed to dismiss: ' + err.message);
@@ -47,7 +48,7 @@ export default function DiscoveredPage() {
         <div style={styles.intro}>
           <h2 style={styles.heading}>Discovered</h2>
           <p style={styles.subheading}>
-            Roles found by the daily LinkedIn scrape, newest first. Kept for 7 days.
+            Roles found by the daily job board scrapes, newest first. Kept for 7 days.
           </p>
         </div>
 

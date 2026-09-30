@@ -1,4 +1,9 @@
 {
+  "sites": [
+    "linkedin",
+    "seek",
+    "indeed"
+  ],
   "search_terms": [
     "Software Engineer",
     "Full Stack Developer",
@@ -8,10 +13,12 @@
   ],
   "location": "Melbourne, Victoria, Australia",
   "hours_old": 24,
-  "max_pages_per_term": 10,
+  "results_per_search": 100,
+  "country_indeed": "australia",
   "title_include": "(software engineer|software developer|full[ -]?stack|back[ -]?end|backend|data engineer|data engineering|analytics engineer|data platform|etl (developer|engineer))",
   "title_exclude": "(intern\\b|internship|graduate program|apprentice)",
   "tracker_url": "http://job-tracker-backend:8080",
   "tracker_user_id": "dcb0c57e-5c30-4190-9362-82e023ef5197",
-  "tracker_email": "nuttello@gmail.com"
+  "tracker_email": "nuttello@gmail.com",
+  "mcp_url": "http://jobspy-mcp:9423"
 }

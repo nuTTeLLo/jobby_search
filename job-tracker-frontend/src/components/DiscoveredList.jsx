@@ -4,6 +4,20 @@ const APPLY_BADGES = {
   unknown: { label: 'Apply type unknown', color: '#adb5bd' },
 };
 
+// Which job board a scraper found the posting on. Anything unlisted still gets a
+// neutral pill showing the raw source, so a new scraper is visible before it is styled.
+const SOURCE_BADGES = {
+  linkedin: { label: 'LinkedIn', color: '#0a66c2' },
+  seek: { label: 'Seek', color: '#e60278' },
+  indeed: { label: 'Indeed', color: '#2164f3' },
+  glassdoor: { label: 'Glassdoor', color: '#0caa41' },
+};
+
+function sourceBadge(source) {
+  const key = (source || '').toLowerCase();
+  return SOURCE_BADGES[key] || { label: source || 'Unknown source', color: '#495057' };
+}
+
 // Within a day, postings are ordered by how much attention they deserve: companies we
 // have applied to before come first whatever their apply type, then fresh external
 // applications, then easy-apply postings. Inside the applied-before tier the easy-apply
@@ -21,16 +35,59 @@ const TIERS = [
   { key: 'easy_apply', label: 'Easy apply', match: () => true },
 ];
 
+// The easiest way in wins: if any board offers Easy/Quick apply, the role is easy apply.
+const APPLY_RANK = { easy_apply: 2, external: 1, unknown: 0 };
+
+// The same role scraped from several boards arrives as one row per board sharing a
+// match_key. Fold them into one posting that remembers each board's link, and file it
+// under the day it was first seen on any board so a re-post elsewhere does not
+// resurface it as new.
+function mergeDuplicates(jobs) {
+  const groups = new Map();
+  for (const job of jobs) {
+    const key = job.match_key || job.id;
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, { ...job, ids: [job.id], postings: [job] });
+      continue;
+    }
+    group.ids.push(job.id);
+    group.postings.push(job);
+    group.applied_before = group.applied_before || job.applied_before;
+    group.apply_url = group.apply_url || job.apply_url;
+    if ((APPLY_RANK[job.apply_type] || 0) > (APPLY_RANK[group.apply_type] || 0)) {
+      group.apply_type = job.apply_type;
+    }
+    if (new Date(job.discovered_at) < new Date(group.discovered_at)) {
+      group.discovered_at = job.discovered_at;
+    }
+  }
+  // Moving a group to its earliest day can break the DESC order the backend sent.
+  return [...groups.values()].sort(
+    (a, b) => new Date(b.discovered_at) - new Date(a.discovered_at),
+  );
+}
+
+// One pill per board, linking to that board's copy of the posting.
+function boardLinks(postings) {
+  const seen = new Map();
+  for (const posting of postings) {
+    const key = (posting.source || '').toLowerCase();
+    if (!seen.has(key)) seen.set(key, posting);
+  }
+  return [...seen.values()];
+}
+
 function tierIndex(job) {
   return TIERS.findIndex((tier) => tier.match(job));
 }
 
 // Group by the day a posting was first seen, newest day first, then into tiers within
-// the day. The backend already orders rows by discovered_at DESC, so insertion order
-// gives us both the day grouping and the ordering inside each tier for free.
+// the day. mergeDuplicates returns postings in discovered_at DESC order, so insertion
+// order gives us both the day grouping and the ordering inside each tier for free.
 function groupByDay(jobs) {
   const days = new Map();
-  for (const job of jobs) {
+  for (const job of mergeDuplicates(jobs)) {
     const day = (job.discovered_at || '').slice(0, 10);
     if (!days.has(day)) days.set(day, TIERS.map(() => []));
     days.get(day)[tierIndex(job)].push(job);
@@ -116,6 +173,32 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
                     </div>
 
                     <div style={styles.badges}>
+                      {boardLinks(job.postings).map((posting) => {
+                        const source = sourceBadge(posting.source);
+                        return (
+                          <a
+                            key={posting.id}
+                            href={posting.job_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...styles.badge, ...styles.link, backgroundColor: source.color }}
+                            title={`Open on ${source.label}`}
+                          >
+                            {source.label}
+                          </a>
+                        );
+                      })}
+                      {job.apply_url && (
+                        <a
+                          href={job.apply_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={styles.employerLink}
+                          title="Apply on the employer's own site"
+                        >
+                          Employer site ↗
+                        </a>
+                      )}
                       <span style={{ ...styles.badge, backgroundColor: badge.color }}>
                         {badge.label}
                       </span>
@@ -125,7 +208,7 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
                         </span>
                       )}
                       <button
-                        onClick={() => onDismiss(job.id)}
+                        onClick={() => onDismiss(job.ids)}
                         style={styles.dismissBtn}
                         title="Hide this posting"
                       >
@@ -227,6 +310,17 @@ const styles = {
     fontSize: '12px',
     fontWeight: 500,
     display: 'inline-block',
+  },
+  link: {
+    textDecoration: 'none',
+  },
+  employerLink: {
+    border: '1px solid #dee2e6',
+    color: '#0d6efd',
+    borderRadius: '12px',
+    padding: '3px 12px',
+    fontSize: '12px',
+    textDecoration: 'none',
   },
   dismissBtn: {
     border: '1px solid #dee2e6',
