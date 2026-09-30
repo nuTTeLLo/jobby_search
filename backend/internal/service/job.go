@@ -200,8 +200,12 @@ func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) 
 	if input.Notes != "" {
 		job.Notes = input.Notes
 	}
-	job.IsRemote = input.IsRemote
-	job.EasyApply = input.EasyApply
+	if input.IsRemote != nil {
+		job.IsRemote = *input.IsRemote
+	}
+	if input.EasyApply != nil {
+		job.EasyApply = *input.EasyApply
+	}
 	if input.ViaRecruiter != nil {
 		job.ViaRecruiter = *input.ViaRecruiter
 	}

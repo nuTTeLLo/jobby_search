@@ -78,15 +78,17 @@ type JobCreateInput struct {
 }
 
 type JobUpdateInput struct {
-	JobTitle     string `json:"job_title"`
-	CompanyName  string `json:"company_name"`
-	Location     string `json:"location"`
-	JobURL       string `json:"job_url"`
-	Description  string `json:"description"`
-	Salary       string `json:"salary"`
-	JobType      string `json:"job_type"`
-	IsRemote     bool   `json:"is_remote"`
-	EasyApply    bool   `json:"easy_apply"`
+	JobTitle    string `json:"job_title"`
+	CompanyName string `json:"company_name"`
+	Location    string `json:"location"`
+	JobURL      string `json:"job_url"`
+	Description string `json:"description"`
+	Salary      string `json:"salary"`
+	JobType     string `json:"job_type"`
+	// Pointers so a partial update that leaves them out keeps the stored
+	// value; a plain bool would read as false and clear the flag.
+	IsRemote     *bool  `json:"is_remote"`
+	EasyApply    *bool  `json:"easy_apply"`
 	ViaRecruiter *bool  `json:"via_recruiter"`
 	Source       string `json:"source"`
 	Status       string `json:"status"`
