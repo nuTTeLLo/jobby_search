@@ -26,11 +26,26 @@ func normalizeCompany(name string) string {
 	lowered := strings.ToLower(strings.TrimSpace(name))
 	for _, suffix := range []string{
 		" pty ltd", " pty limited", " pty", " ltd", " limited", " inc", " incorporated",
-		" group", " services", " australia", " au",
+		" group", " services", " of australia", " australia", " au",
 	} {
 		lowered = strings.TrimSuffix(lowered, suffix)
 	}
 	return nonAlphanumeric.ReplaceAllString(lowered, "")
+}
+
+// matchKey groups the same role scraped from different boards. The boards only
+// expose the employer's apply link publicly for Indeed, so the key is company plus
+// title: "Senior Full-Stack Engineer" at "Acme Pty Ltd" on Seek and "Senior Full
+// Stack Engineer" at "Acme" on LinkedIn share one. A board that words the company
+// differently ("CBA" vs "Commonwealth Bank") is not matched; this is best effort.
+func matchKey(job *domain.DiscoveredJob) string {
+	company := normalizeCompany(job.CompanyName)
+	title := nonAlphanumeric.ReplaceAllString(strings.ToLower(job.JobTitle), "")
+	if company == "" || title == "" {
+		// Nothing reliable to match on; keep the posting on its own.
+		return "id:" + job.ID
+	}
+	return company + "|" + title
 }
 
 func (s *DiscoveredJobService) retentionCutoff() time.Time {
@@ -39,7 +54,14 @@ func (s *DiscoveredJobService) retentionCutoff() time.Time {
 
 // GetRecent lists the retained window for the user.
 func (s *DiscoveredJobService) GetRecent(userID string, includeDismissed bool) ([]domain.DiscoveredJob, error) {
-	return s.repo.GetRecent(userID, includeDismissed, s.retentionCutoff())
+	jobs, err := s.repo.GetRecent(userID, includeDismissed, s.retentionCutoff())
+	if err != nil {
+		return nil, err
+	}
+	for i := range jobs {
+		jobs[i].MatchKey = matchKey(&jobs[i])
+	}
+	return jobs, nil
 }
 
 func (s *DiscoveredJobService) Dismiss(userID, id string) (*domain.DiscoveredJob, error) {
@@ -106,6 +128,7 @@ func (s *DiscoveredJobService) Ingest(userID string, input *domain.DiscoveredIng
 				"company_name":   in.CompanyName,
 				"location":       in.Location,
 				"job_url":        in.JobURL,
+				"apply_url":      in.ApplyURL,
 				"source":         in.Source,
 				"posted_date":    in.PostedDate,
 				"apply_type":     applyType,
@@ -124,6 +147,7 @@ func (s *DiscoveredJobService) Ingest(userID string, input *domain.DiscoveredIng
 			CompanyName:   in.CompanyName,
 			Location:      in.Location,
 			JobURL:        in.JobURL,
+			ApplyURL:      in.ApplyURL,
 			Source:        in.Source,
 			PostedDate:    in.PostedDate,
 			ApplyType:     applyType,

@@ -5,7 +5,7 @@ WORKDIR /app
 # PyJWT is the only dependency; everything else is stdlib.
 RUN pip install --no-cache-dir "pyjwt==2.*"
 
-COPY linkedin_daily_scrape.py config.json ./
+COPY board_scrape.py config.json ./
 
 # Timezone data so the container's log timestamps read as Melbourne time when TZ
 # is set by the CronJob. Scheduling itself is handled by the CronJob's timeZone.
@@ -18,4 +18,4 @@ RUN apt-get update \
 RUN useradd --create-home --uid 10001 scraper
 USER scraper
 
-ENTRYPOINT ["python", "/app/linkedin_daily_scrape.py"]
+ENTRYPOINT ["python", "/app/board_scrape.py"]

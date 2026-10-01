@@ -8,7 +8,7 @@ Jobby Search is a full-stack job tracking application with three services:
 - **Backend**: Go REST API (port 8080)
 - **Frontend**: React SPA (port 5173)
 - **MCP Server**: Node.js job search service via JobSpy (port 9423)
-- **Daily scrape**: Python LinkedIn scraper run as a k3s CronJob (`daily-scrape/`)
+- **Daily scrape**: Python LinkedIn/Seek/Indeed scraper (via the MCP server) run as a k3s CronJob (`daily-scrape/`)
 
 > **Important**: Use **bun** for Node.js package management.
 
@@ -73,13 +73,14 @@ React Frontend → Go Backend API → MCP Server → JobSpy (multi-site job sear
 
 ### Daily scrape (Python)
 
-`daily-scrape/` scrapes LinkedIn's public guest endpoints each morning and POSTs the
-results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
+`daily-scrape/` searches LinkedIn, Seek and Indeed each morning through the JobSpy MCP
+server (`http://jobspy-mcp:9423` in-cluster) and POSTs the results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
 page (`/discovered`). It runs as a k3s CronJob at 09:00 Australia/Melbourne (manifest lives in the
 `raspi` repo, `k8s-services/job-tracker/09-cronjob-linkedin-scrape.yaml`); the image is
 built by the same `docker.yml` matrix as the other services, as
 `ghcr.io/nuttello/job-tracker-scraper`. It holds no local state — the API upserts on
-`(user_id, external_id)` and prunes to a rolling 7-day window. See
+`(user_id, external_id)` and prunes to a rolling 7-day window. The same role on several
+boards is grouped on read by normalised company + title (`match_key`). See
 `daily-scrape/README.md`.
 
 ### Backend Structure (Go)
@@ -144,7 +145,7 @@ Supports SSE and Stdio transports. SSE enabled by default (`ENABLE_SSE=1`).
 | GET | `/api/jobs/:id/attachments` | List attachments |
 | GET | `/api/jobs/:id/attachments/:id/download` | Download attachment |
 | DELETE | `/api/jobs/:id/attachments/:id` | Delete attachment |
-| GET | `/api/discovered-jobs` | List scraped postings, last 7 days (`?include_dismissed=true`) |
+| GET | `/api/discovered-jobs` | List scraped postings, last 7 days, with a cross-board `match_key` (`?include_dismissed=true`) |
 | POST | `/api/discovered-jobs` | Batch ingest from a scraper (upserts, then prunes) |
 | PATCH | `/api/discovered-jobs/:id/dismiss` | Hide a discovered posting |
 | GET | `/health` | Health check |
