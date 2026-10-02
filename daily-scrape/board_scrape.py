@@ -24,6 +24,7 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -49,6 +50,14 @@ SITES = {
 APPLY_EASY = "easy_apply"
 APPLY_EXTERNAL = "external"
 APPLY_UNKNOWN = "unknown"
+
+# JobSpy times out individual requests but not a whole search, so a stalled one
+# would block every board after it. Overridable with search_timeout_seconds.
+DEFAULT_SEARCH_TIMEOUT = 300
+
+
+class SearchTimedOut(Exception):
+    """A board search ran past its deadline; the rest of that board is skipped."""
 
 
 # --------------------------------------------------------------------------- config
@@ -145,19 +154,37 @@ def search_board(cfg, site, term, warnings):
         # days; within_window trims the extra back off.
         hours = max(hours, 48)
 
-    try:
-        frame = scrape_jobs(
-            site_name=site,
-            search_term=term,
-            location=cfg["location"],
-            hours_old=hours,
-            results_wanted=cfg.get("results_per_search", 100),
-            country_indeed=cfg.get("country_indeed", "australia"),
-            verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
-        )
-    except Exception as exc:  # noqa: BLE001 - one board's failure must not end the run
+    # Run the search on a daemon thread so it can be abandoned at the deadline: a
+    # Python thread cannot be killed, but a daemon one does not stop the process
+    # exiting once the rest of the run is done.
+    outcome = {}
+
+    def run():
+        try:
+            outcome["frame"] = scrape_jobs(
+                site_name=site,
+                search_term=term,
+                location=cfg["location"],
+                hours_old=hours,
+                results_wanted=cfg.get("results_per_search", 100),
+                country_indeed=cfg.get("country_indeed", "australia"),
+                verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
+            )
+        except Exception as exc:  # noqa: BLE001 - one board's failure must not end the run
+            outcome["error"] = exc
+
+    timeout = cfg.get("search_timeout_seconds", DEFAULT_SEARCH_TIMEOUT)
+    worker = threading.Thread(target=run, name="jobspy-%s" % site, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise SearchTimedOut("%s '%s' ran past %ds" % (site, term, timeout))
+
+    if "error" in outcome:
+        exc = outcome["error"]
         warnings.append("%s '%s' failed: %s: %s" % (site, term, type(exc).__name__, exc))
         return []
+    frame = outcome.get("frame")
     if frame is None or frame.empty:
         return []
     return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
@@ -372,7 +399,11 @@ def main():
     candidates = {}
     for site in cfg["sites"]:
         for term in cfg["search_terms"]:
-            results = search_board(cfg, site, term, warnings)
+            try:
+                results = search_board(cfg, site, term, warnings)
+            except SearchTimedOut as exc:
+                warnings.append("%s; skipping %s's remaining searches." % (exc, site))
+                break
             counts[(site, term)] = len(results)
             if args.verbose:
                 print("  %s '%s' -> %d" % (site, term, len(results)), file=sys.stderr)

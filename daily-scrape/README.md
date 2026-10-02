@@ -47,7 +47,10 @@ by matching the company against your tracked jobs.
 ## Configuration
 
 `config.json` holds the search — boards, terms, location, `hours_old`,
-`results_per_search`, and the title regexes — and is baked into the image. Deployment
+`results_per_search`, and the title regexes — and is baked into the image. A single
+search is abandoned after `search_timeout_seconds` (default 300), with the rest of that
+board skipped, so one stuck board cannot hold up the others; JobSpy only times out
+individual requests. Deployment
 settings come from the environment and override the file:
 
 | Env var | Purpose |
