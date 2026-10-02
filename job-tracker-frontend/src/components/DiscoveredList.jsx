@@ -297,11 +297,15 @@ const styles = {
     fontSize: '13px',
     marginTop: '2px',
   },
+  // Pinned to the right edge, even when the row wraps it onto its own line or its
+  // items wrap among themselves, so Dismiss always lands in the same spot.
   badges: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: '8px',
     flexWrap: 'wrap',
+    marginLeft: 'auto',
   },
   badge: {
     color: 'white',
