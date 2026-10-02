@@ -49,6 +49,9 @@ type DiscoveredJob struct {
 	// boards. Computed on read rather than stored, so the matching rule can change
 	// without a backfill.
 	MatchKey string `json:"match_key" gorm:"-"`
+	// LastAppliedAt is when the user last applied at this company, if ever. Also
+	// computed on read, so it follows applications made after the scrape.
+	LastAppliedAt *time.Time `json:"last_applied_at" gorm:"-"`
 }
 
 func (d *DiscoveredJob) BeforeCreate(tx *gorm.DB) error {
