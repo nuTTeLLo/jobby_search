@@ -169,6 +169,11 @@ def search_board(cfg, site, term, remote, warnings):
         # which drops anything listed yesterday after this run's hour. Ask for two
         # days; within_window trims the extra back off.
         hours = max(hours, 48)
+    elif remote and site == "indeed":
+        # JobSpy's Indeed query can apply a date filter or a remote filter, not
+        # both, and prefers the date one. Ask for remote and leave the date check to
+        # within_window, so remote postings are not crowded out by on-site ones.
+        hours = None
 
     label = "%s '%s'" % (site, search_label(term, remote))
 
@@ -206,13 +211,7 @@ def search_board(cfg, site, term, remote, warnings):
     frame = outcome.get("frame")
     if frame is None or frame.empty:
         return []
-    rows = frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
-    if remote and site == "indeed":
-        # JobSpy's Indeed query cannot combine its remote filter with the date
-        # filter and keeps the date one, so filter on its own is_remote reading.
-        # LinkedIn and Seek apply the remote filter themselves.
-        rows = [row for row in rows if row.get("is_remote")]
-    return rows
+    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
 
 
 def linkedin_apply_type(job_id, warnings):
