@@ -4,8 +4,8 @@ Scrapes LinkedIn, Seek and Indeed each morning for newly posted roles and feeds 
 the tracker's **Discovered** page (`/discovered`). It never touches the `jobs` table —
 application status stays on the boards, and this is purely a reading surface.
 
-Runs as a k3s CronJob at **09:00 Australia/Melbourne**
-(`k8s-services/job-tracker/09-cronjob-linkedin-scrape.yaml` in the `raspi` repo). The
+Runs as the k3s CronJob `board-scrape` at **09:00 Australia/Melbourne**
+(`k8s-services/job-tracker/09-cronjob-board-scrape.yaml` in the `raspi` repo). The
 CronJob's `timeZone` handles AEST/AEDT, so nothing in the script deals with daylight
 saving.
 
