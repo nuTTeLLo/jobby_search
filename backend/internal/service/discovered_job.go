@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -58,8 +59,24 @@ func (s *DiscoveredJobService) GetRecent(userID string, includeDismissed bool) (
 	if err != nil {
 		return nil, err
 	}
+	applied, err := s.repo.LastAppliedByCompany(userID)
+	if err != nil {
+		return nil, fmt.Errorf("load last applied dates: %w", err)
+	}
+	// Several spellings of a company can normalize to one; keep the latest date.
+	lastApplied := make(map[string]time.Time, len(applied))
+	for _, row := range applied {
+		key := normalizeCompany(row.CompanyName)
+		if key != "" && row.LastAppliedAt.After(lastApplied[key]) {
+			lastApplied[key] = row.LastAppliedAt
+		}
+	}
+
 	for i := range jobs {
 		jobs[i].MatchKey = matchKey(&jobs[i])
+		if at, ok := lastApplied[normalizeCompany(jobs[i].CompanyName)]; ok {
+			jobs[i].LastAppliedAt = &at
+		}
 	}
 	return jobs, nil
 }

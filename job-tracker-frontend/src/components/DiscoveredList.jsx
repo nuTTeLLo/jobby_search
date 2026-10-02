@@ -54,6 +54,7 @@ function mergeDuplicates(jobs) {
     group.ids.push(job.id);
     group.postings.push(job);
     group.applied_before = group.applied_before || job.applied_before;
+    group.last_applied_at = group.last_applied_at || job.last_applied_at;
     group.apply_url = group.apply_url || job.apply_url;
     if ((APPLY_RANK[job.apply_type] || 0) > (APPLY_RANK[group.apply_type] || 0)) {
       group.apply_type = job.apply_type;
@@ -122,6 +123,14 @@ function formatDay(day) {
   if (isSameDay(date, today)) return `Today · ${formatted}`;
   if (isSameDay(date, yesterday)) return `Yesterday · ${formatted}`;
   return formatted;
+}
+
+function formatAppliedDate(timestamp) {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function DiscoveredList({ jobs, onDismiss, loading }) {
@@ -204,7 +213,9 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
                       </span>
                       {job.applied_before && (
                         <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
-                          Applied here before
+                          {job.last_applied_at
+                            ? `Last Applied ${formatAppliedDate(job.last_applied_at)}`
+                            : 'Applied here before'}
                         </span>
                       )}
                       <button
