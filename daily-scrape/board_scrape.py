@@ -56,6 +56,22 @@ APPLY_UNKNOWN = "unknown"
 DEFAULT_SEARCH_TIMEOUT = 300
 
 
+def planned_searches(cfg):
+    """Every (term, remote) pair to run on each board.
+
+    search_terms run in cfg["location"]; remote_search_terms run as remote roles
+    across cfg["remote_location"], for niches too small to find locally, and only
+    keep postings whose title names the term.
+    """
+    return [(term, False) for term in cfg["search_terms"]] + [
+        (term, True) for term in cfg.get("remote_search_terms", [])
+    ]
+
+
+def search_label(term, remote):
+    return "%s (remote)" % term if remote else term
+
+
 class SearchTimedOut(Exception):
     """A board search ran past its deadline; the rest of that board is skipped."""
 
@@ -138,7 +154,7 @@ def request_with_retry(url, label, warnings, **kwargs):
     return None
 
 
-def search_board(cfg, site, term, warnings):
+def search_board(cfg, site, term, remote, warnings):
     """One JobSpy search for one term on one board.
 
     Boards are searched one at a time so a board that errors or throttles costs
@@ -154,6 +170,8 @@ def search_board(cfg, site, term, warnings):
         # days; within_window trims the extra back off.
         hours = max(hours, 48)
 
+    label = "%s '%s'" % (site, search_label(term, remote))
+
     # Run the search on a daemon thread so it can be abandoned at the deadline: a
     # Python thread cannot be killed, but a daemon one does not stop the process
     # exiting once the rest of the run is done.
@@ -164,7 +182,8 @@ def search_board(cfg, site, term, warnings):
             outcome["frame"] = scrape_jobs(
                 site_name=site,
                 search_term=term,
-                location=cfg["location"],
+                location=cfg["remote_location"] if remote else cfg["location"],
+                is_remote=remote,
                 hours_old=hours,
                 results_wanted=cfg.get("results_per_search", 100),
                 country_indeed=cfg.get("country_indeed", "australia"),
@@ -178,16 +197,22 @@ def search_board(cfg, site, term, warnings):
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
-        raise SearchTimedOut("%s '%s' ran past %ds" % (site, term, timeout))
+        raise SearchTimedOut("%s ran past %ds" % (label, timeout))
 
     if "error" in outcome:
         exc = outcome["error"]
-        warnings.append("%s '%s' failed: %s: %s" % (site, term, type(exc).__name__, exc))
+        warnings.append("%s failed: %s: %s" % (label, type(exc).__name__, exc))
         return []
     frame = outcome.get("frame")
     if frame is None or frame.empty:
         return []
-    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+    rows = frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+    if remote and site == "indeed":
+        # JobSpy's Indeed query cannot combine its remote filter with the date
+        # filter and keeps the date one, so filter on its own is_remote reading.
+        # LinkedIn and Seek apply the remote filter themselves.
+        rows = [row for row in rows if row.get("is_remote")]
+    return rows
 
 
 def linkedin_apply_type(job_id, warnings):
@@ -320,15 +345,21 @@ def format_digest(jobs, counts, warnings, cfg, run_time):
     """Human-readable summary for the job log."""
     lines = [
         "Daily board scrape - %s" % run_time.strftime("%Y-%m-%d %H:%M %Z"),
-        "%s | last %d hours | boards: %s"
-        % (cfg["location"], cfg["hours_old"], ", ".join(cfg["sites"])),
+        "%s (remote: %s) | last %d hours | boards: %s"
+        % (
+            cfg["location"],
+            cfg.get("remote_location", "-"),
+            cfg["hours_old"],
+            ", ".join(cfg["sites"]),
+        ),
         "",
         "  %-28s %s" % ("", "  ".join("%9s" % site for site in cfg["sites"])),
     ]
-    for term in cfg["search_terms"]:
+    for term, remote in planned_searches(cfg):
+        label = search_label(term, remote)
         lines.append(
             "  %-28s %s"
-            % (term, "  ".join("%9d" % counts.get((site, term), 0) for site in cfg["sites"]))
+            % (label, "  ".join("%9d" % counts.get((site, label), 0) for site in cfg["sites"]))
         )
     lines.append("")
 
@@ -398,15 +429,16 @@ def main():
     counts = {}
     candidates = {}
     for site in cfg["sites"]:
-        for term in cfg["search_terms"]:
+        for term, remote in planned_searches(cfg):
+            label = search_label(term, remote)
             try:
-                results = search_board(cfg, site, term, warnings)
+                results = search_board(cfg, site, term, remote, warnings)
             except SearchTimedOut as exc:
                 warnings.append("%s; skipping %s's remaining searches." % (exc, site))
                 break
-            counts[(site, term)] = len(results)
+            counts[(site, label)] = len(results)
             if args.verbose:
-                print("  %s '%s' -> %d" % (site, term, len(results)), file=sys.stderr)
+                print("  %s '%s' -> %d" % (site, label, len(results)), file=sys.stderr)
 
             for result in results:
                 posting_id = board_id(site, result.get("id") or "")
@@ -414,6 +446,11 @@ def main():
                 if not posting_id or not title or (site, posting_id) in candidates:
                     continue
                 if not include_re.search(title):
+                    continue
+                # With no real matches, LinkedIn pads a niche search with loosely
+                # related postings from any city, which the role filter above would
+                # let through. A remote search is only for its own niche.
+                if remote and term.lower() not in title.lower():
                     continue
                 if exclude_re and exclude_re.search(title):
                     continue
@@ -423,7 +460,7 @@ def main():
 
             time.sleep(random.uniform(3.0, 6.0))
 
-        if not any(counts.get((site, term)) for term in cfg["search_terms"]):
+        if not any(count for (counted_site, _), count in counts.items() if counted_site == site):
             warnings.append(
                 "%s returned nothing for any term - it is likely throttling or its "
                 "scraper is broken; today's feed is missing it." % site

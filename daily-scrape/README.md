@@ -47,7 +47,11 @@ by matching the company against your tracked jobs.
 ## Configuration
 
 `config.json` holds the search — boards, terms, location, `hours_old`,
-`results_per_search`, and the title regexes — and is baked into the image. A single
+`results_per_search`, and the title regexes — and is baked into the image.
+`remote_search_terms` are also searched as remote roles across `remote_location`
+(currently Elixir, across Australia); those only keep postings whose title names the
+term, because LinkedIn pads a niche search that has no matches with unrelated postings
+from any city. A single
 search is abandoned after `search_timeout_seconds` (default 300), with the rest of that
 board skipped, so one stuck board cannot hold up the others; JobSpy only times out
 individual requests. Deployment
