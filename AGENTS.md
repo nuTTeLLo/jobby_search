@@ -8,7 +8,7 @@ Jobby Search is a full-stack job tracking application with three services:
 - **Backend**: Go REST API (port 8080)
 - **Frontend**: React SPA (port 5173)
 - **MCP Server**: Node.js job search service via JobSpy (port 9423)
-- **Daily scrape**: Python LinkedIn/Seek/Indeed scraper (via the MCP server) run as a k3s CronJob (`daily-scrape/`)
+- **Daily scrape**: Python LinkedIn/Seek/Indeed scraper (JobSpy in-process) run as a k3s CronJob (`daily-scrape/`)
 
 > **Important**: Use **bun** for Node.js package management.
 
@@ -73,8 +73,9 @@ React Frontend → Go Backend API → MCP Server → JobSpy (multi-site job sear
 
 ### Daily scrape (Python)
 
-`daily-scrape/` searches LinkedIn, Seek and Indeed each morning through the JobSpy MCP
-server (`http://jobspy-mcp:9423` in-cluster) and POSTs the results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
+`daily-scrape/` searches LinkedIn, Seek and Indeed each morning with JobSpy, run in-process
+from the `jobspy-mcp-server` fork (pinned by `JOBSPY_REF` in its Dockerfile; bump it with
+the submodule), and POSTs the results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
 page (`/discovered`). It runs as a k3s CronJob at 09:00 Australia/Melbourne (manifest lives in the
 `raspi` repo, `k8s-services/job-tracker/09-cronjob-linkedin-scrape.yaml`); the image is
 built by the same `docker.yml` matrix as the other services, as

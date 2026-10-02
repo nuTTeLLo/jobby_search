@@ -11,9 +11,12 @@ saving.
 
 ## How it works
 
-1. For each board and each term in `config.json`, asks the in-cluster JobSpy MCP server
-   (`POST http://jobspy-mcp:9423/api`) for postings from the last `hours_old` hours —
-   one board at a time, so a board that errors or throttles only loses its own results.
+1. For each board and each term in `config.json`, runs a JobSpy search for postings
+   from the last `hours_old` hours — one board at a time, so a board that errors or
+   throttles only loses its own results. JobSpy runs in-process, from the
+   `jobspy-mcp-server` fork (which adds Seek and `apply_type`), not through the MCP
+   server: long searches inside the MCP pod stalled it until Kubernetes restarted it,
+   which also took down the app's own job search.
    Seek is asked for two days, because its one-day filter means "listed today"; the
    date check in step 2 trims it back.
 2. Filters titles through `title_include` / `title_exclude`, re-checks the posted date
@@ -24,7 +27,7 @@ saving.
      `apply-link-onsite` → `easy_apply`, `apply-link-offsite` → `external`.
    - **Seek:** the `isLinkOut` field of the `jobDetails` GraphQL query — `false` is
      Quick apply, `true` hands off to the employer.
-   - **Indeed:** already in the search result (`applyType`, from the MCP fork).
+   - **Indeed:** already in the search result (JobSpy's `apply_type`, from the fork).
 
    Anything that cannot be determined is `unknown`. This runs only for postings that
    survived step 2, which keeps the per-posting requests to LinkedIn and Seek small.
@@ -52,27 +55,28 @@ settings come from the environment and override the file:
 | `TRACKER_URL` | Tracker base URL (in-cluster: `http://job-tracker-backend:8080`) |
 | `TRACKER_USER_ID`, `TRACKER_EMAIL` | Claims for the minted token (not in `config.json`; the CronJob sets them) |
 | `JWT_SECRET` | Signing secret, from the `job-tracker-secret` secret |
-| `MCP_URL` | JobSpy MCP server (default `http://jobspy-mcp:9423`) |
 | `SEARCH_LOCATION`, `HOURS_OLD`, `SITES` | Occasional overrides without rebuilding |
 
 ## Running locally
 
-Start the MCP server (`mise run mcp`, on :9423) and a dev backend (`mise run backend`,
-on :8081), then:
+Needs Python 3.10 with JobSpy's dependencies — the repo's `.venv` from `mise install`
+has them — and a dev backend (`mise run backend`, on :8081). Point `PYTHONPATH` at the
+fork's JobSpy in the submodule:
 
 ```bash
-MCP_URL=http://localhost:9423 \
+PYTHONPATH=../jobspy-mcp-server/jobspy \
 TRACKER_URL=http://localhost:8081 \
 TRACKER_USER_ID=<your user id> \
 TRACKER_EMAIL=<your login email> \
 JWT_SECRET=<dev secret> \
-python3 board_scrape.py --dry-run
+../.venv/bin/python board_scrape.py --dry-run
 ```
 
 `--dry-run` scrapes and prints the digest without posting. Other flags: `--hours N`,
 `--sites seek,indeed`, `--config PATH`, `--verbose` (per-search counts on stderr).
 
-Only dependency is PyJWT; everything else is stdlib.
+Dependencies are JobSpy's (installed from the fork's `jobspy/requirements.txt`, at the
+commit pinned by `JOBSPY_REF` in the Dockerfile) plus PyJWT.
 
 ## Throttling
 

@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Daily job board scrape -> job tracker "Discovered" feed.
 
-Searches LinkedIn, Seek and Indeed through the in-cluster JobSpy MCP server for roles
-posted in the last 24 hours, filters to the role families being targeted, classifies
-each surviving posting as Easy Apply or external, and POSTs the batch to the job
-tracker.
+Searches LinkedIn, Seek and Indeed with JobSpy for roles posted in the last 24 hours,
+filters to the role families being targeted, classifies each surviving posting as Easy
+Apply or external, and POSTs the batch to the job tracker.
+
+JobSpy runs in this process rather than through the MCP server: on the cluster node,
+long searches inside the MCP pod stalled it until its liveness probe restarted it,
+which took the app's own job search down with the scrape.
 
 The tracker owns de-duplication and retention: rows are upserted on
 (user_id, external_id) and pruned to a rolling window, and the same role found on
 several boards is grouped on read by company and title. This script therefore keeps
 no local state and a re-run is harmless.
 
-Stdlib only, plus PyJWT to mint the tracker token.
+Needs JobSpy (the jobspy-mcp-server fork, for Seek and apply_type) on the import
+path, plus PyJWT to mint the tracker token; see the Dockerfile.
 """
 
 import argparse
@@ -19,7 +23,6 @@ import json
 import os
 import random
 import re
-import socket
 import sys
 import time
 import urllib.error
@@ -48,10 +51,6 @@ APPLY_EXTERNAL = "external"
 APPLY_UNKNOWN = "unknown"
 
 
-class BoardUnavailable(Exception):
-    """A board's MCP search timed out; the rest of that board is skipped."""
-
-
 # --------------------------------------------------------------------------- config
 
 
@@ -69,7 +68,6 @@ def load_config(path):
         ("TRACKER_USER_ID", "tracker_user_id"),
         ("TRACKER_EMAIL", "tracker_email"),
         ("JWT_SECRET", "jwt_secret"),
-        ("MCP_URL", "mcp_url"),
         ("SEARCH_LOCATION", "location"),
     ):
         value = os.environ.get(env_key)
@@ -132,15 +130,14 @@ def request_with_retry(url, label, warnings, **kwargs):
 
 
 def search_board(cfg, site, term, warnings):
-    """One JobSpy search for one term on one board, via the MCP server.
+    """One JobSpy search for one term on one board.
 
     Boards are searched one at a time so a board that errors or throttles costs
     only its own results, and so each gets its own date window (see seek below).
-
-    Not retried: the MCP kills its JobSpy child after five minutes, so a timeout
-    here means the search or the server is stuck, and asking again only queues more
-    work on it. Raises BoardUnavailable so the caller skips the board's other terms.
+    Returns JobSpy's rows as dicts, with missing values as None.
     """
+    from jobspy import scrape_jobs  # imported lazily: pandas is slow to load
+
     hours = cfg["hours_old"]
     if site == "seek":
         # Seek's date filter counts calendar days, and one day means "listed today",
@@ -148,37 +145,22 @@ def search_board(cfg, site, term, warnings):
         # days; within_window trims the extra back off.
         hours = max(hours, 48)
 
-    label = "%s '%s'" % (site, term)
     try:
-        body = http_request(
-            cfg["mcp_url"].rstrip("/") + "/api",
-            data={
-                "siteNames": site,
-                "searchTerm": term,
-                "location": cfg["location"],
-                "hoursOld": hours,
-                "resultsWanted": cfg.get("results_per_search", 100),
-                "countryIndeed": cfg.get("country_indeed", "australia"),
-                "timeout": 300000,
-            },
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            timeout=330,
+        frame = scrape_jobs(
+            site_name=site,
+            search_term=term,
+            location=cfg["location"],
+            hours_old=hours,
+            results_wanted=cfg.get("results_per_search", 100),
+            country_indeed=cfg.get("country_indeed", "australia"),
+            verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
         )
-    except (TimeoutError, socket.timeout) as exc:
-        raise BoardUnavailable("%s timed out" % label) from exc
-    except urllib.error.HTTPError as exc:
-        warnings.append("%s failed: HTTP %s" % (label, exc.code))
+    except Exception as exc:  # noqa: BLE001 - one board's failure must not end the run
+        warnings.append("%s '%s' failed: %s: %s" % (site, term, type(exc).__name__, exc))
         return []
-    except (urllib.error.URLError, OSError) as exc:
-        if isinstance(getattr(exc, "reason", None), (TimeoutError, socket.timeout)):
-            raise BoardUnavailable("%s timed out" % label) from exc
-        warnings.append("%s failed: %s" % (label, exc))
+    if frame is None or frame.empty:
         return []
-    try:
-        return json.loads(body).get("jobs") or []
-    except ValueError:
-        warnings.append("%s returned invalid JSON" % label)
-        return []
+    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
 
 
 def linkedin_apply_type(job_id, warnings):
@@ -390,11 +372,7 @@ def main():
     candidates = {}
     for site in cfg["sites"]:
         for term in cfg["search_terms"]:
-            try:
-                results = search_board(cfg, site, term, warnings)
-            except BoardUnavailable as exc:
-                warnings.append("%s; skipping %s's remaining searches." % (exc, site))
-                break
+            results = search_board(cfg, site, term, warnings)
             counts[(site, term)] = len(results)
             if args.verbose:
                 print("  %s '%s' -> %d" % (site, term, len(results)), file=sys.stderr)
@@ -408,7 +386,7 @@ def main():
                     continue
                 if exclude_re and exclude_re.search(title):
                     continue
-                if not within_window(result.get("datePosted") or "", cfg["hours_old"]):
+                if not within_window(str(result.get("date_posted") or ""), cfg["hours_old"]):
                     continue
                 candidates[(site, posting_id)] = result
 
@@ -431,16 +409,16 @@ def main():
     # 2. classify how each survivor is applied to
     jobs = []
     for (site, posting_id), result in candidates.items():
-        apply_type = apply_type_for(site, posting_id, result.get("applyType"), warnings)
+        apply_type = apply_type_for(site, posting_id, result.get("apply_type"), warnings)
         jobs.append({
             "external_id": SITES[site]["external_prefix"] + posting_id,
             "job_title": result.get("title") or "",
             "company_name": result.get("company") or "",
             "location": result.get("location") or "",
-            "job_url": result.get("jobUrl") or "",
-            "apply_url": result.get("jobUrlDirect") or "",
+            "job_url": result.get("job_url") or "",
+            "apply_url": result.get("job_url_direct") or "",
             "source": site,
-            "posted_date": (result.get("datePosted") or "")[:10],
+            "posted_date": str(result.get("date_posted") or "")[:10],
             "apply_type": apply_type,
         })
         if site != "indeed":
