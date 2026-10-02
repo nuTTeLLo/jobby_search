@@ -21,6 +21,12 @@ mise run setup      # once: submodule init + all dependencies
 mise run dev        # backend :8081 + frontend :5173 + MCP :9423, all local processes
 ```
 Individual services: `mise run backend` / `mise run frontend` / `mise run mcp`.
+
+`mise run dev` also works from a secondary jj workspace (after `mise trust` there).
+It reads `backend/.env`, `.venv` and the MCP submodule from the default workspace, and
+runs on ports shifted by the lowest offset no other live workspace holds (e.g.
+:5174 / :8082 / :9424), remembered in a gitignored `.dev-port-offset`. CORS and the
+API base follow the offset. See `scripts/dev-workspace.sh`.
 The MCP server lives in the `jobspy-mcp-server/` git submodule; prod still runs the
 container images (see Docker section) — `JOBSPY_PYTHON`/`JOBSPY_SCRIPT` env vars point
 local dev at the repo venv instead of the container's `/app` layout.

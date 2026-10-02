@@ -5,10 +5,14 @@ bun = "1.3"
 python = "3.10"
 
 [env]
+# The default jj workspace's root (this one's, unless in a secondary workspace), and
+# this workspace's dev port offset. See scripts/dev-workspace.sh.
+DEV_MAIN_ROOT = "{{ exec(command=config_root ~ '/scripts/dev-workspace.sh root') }}"
+DEV_PORT_OFFSET = "{{ exec(command=config_root ~ '/scripts/dev-workspace.sh offset') }}"
 # Backend secrets/config live in gitignored backend/.env (see backend/.env.example)
-_.file = "backend/.env"
+_.file = "{{ env.DEV_MAIN_ROOT }}/backend/.env"
 # Python venv for the JobSpy runner (used by the MCP server's local dev task)
-_.python.venv = { path = ".venv", create = true }
+_.python.venv = { path = "{{ env.DEV_MAIN_ROOT }}/.venv", create = true }
 
 [tasks.setup]
 description = "Install dependencies for all services (run once after clone)"
@@ -21,22 +25,36 @@ run = [
   "python -m ensurepip --upgrade >/dev/null && python -m pip install -r jobspy-mcp-server/jobspy/requirements.txt",
 ]
 
+# Ports are 8081 / 5173 / 9423 plus DEV_PORT_OFFSET, so a secondary jj workspace runs
+# alongside the default one.
 [tasks.backend]
 description = "Run Go API on :8081 (the port frontend dev expects)"
 dir = "backend"
-env = { SERVER_PORT = "8081", ALLOWED_ORIGINS = "http://localhost:5173,http://sprite-studio.tailee323f.ts.net:5173" }
-run = "go run ./cmd/server/"
+run = """
+off=${DEV_PORT_OFFSET:-0}
+SERVER_PORT=$((8081 + off)) \
+MCP_SERVER_URL=http://localhost:$((9423 + off)) \
+ALLOWED_ORIGINS=http://localhost:$((5173 + off)),http://sprite-studio.tailee323f.ts.net:$((5173 + off)) \
+  go run ./cmd/server/
+"""
 
 [tasks.frontend]
 description = "Run Vite dev server on :5173"
 dir = "job-tracker-frontend"
-run = "bun run dev"
+run = """
+off=${DEV_PORT_OFFSET:-0}
+[ -d node_modules ] || bun install
+VITE_API_BASE=http://localhost:$((8081 + off)) bun run dev --port $((5173 + off)) --strictPort
+"""
 
 [tasks.mcp]
 description = "Run MCP server locally on :9423 (JobSpy via repo venv python)"
-dir = "jobspy-mcp-server"
 env = { JOBSPY_SCRIPT = "jobspy/main.py", ENABLE_SSE = "1" }
-run = "bun dev"
+run = """
+off=${DEV_PORT_OFFSET:-0}
+# a secondary workspace has no submodule checkout, so run the default workspace's
+cd "$DEV_MAIN_ROOT/jobspy-mcp-server" && JOBSPY_PORT=$((9423 + off)) bun dev
+"""
 
 [tasks.dev]
 description = "Start all dev services locally (backend + frontend + MCP)"

@@ -9,6 +9,8 @@ node_modules
 dist
 tmp
 .venv/
+# dev port offset of a secondary jj workspace (scripts/dev-workspace.sh)
+.dev-port-offset
 
 # daily-scrape
 daily-scrape/__pycache__/
