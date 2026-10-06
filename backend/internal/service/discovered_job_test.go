@@ -17,6 +17,10 @@ func TestMatchKey(t *testing.T) {
 		{[2]string{"REA Group", "Software Engineer"}, [2]string{"REA", "software engineer"}},
 		// Seen in a real run: LinkedIn and Indeed name the bank differently.
 		{[2]string{"Commonwealth Bank", "Staff Software Engineer (AWS and AI)"}, [2]string{"Commonwealth Bank of Australia", "Staff Software Engineer (AWS and AI)"}},
+		// Seek and LinkedIn: a brand alias on one side, a region suffix on the other.
+		{[2]string{"Allume Energy", "Data Engineer"}, [2]string{"Allume ANZ", "Data Engineer"}},
+		{[2]string{"Acme NZ", "Data Engineer"}, [2]string{"Acme", "Data Engineer"}},
+		{[2]string{"Rauland Australia and New Zealand", "Data Engineer"}, [2]string{"Rauland", "Data Engineer"}},
 	}
 	for _, tc := range same {
 		if ka, kb := key(tc.a[0], tc.a[1]), key(tc.b[0], tc.b[1]); ka != kb {

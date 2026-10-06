@@ -21,6 +21,13 @@ func NewDiscoveredJobService(repo *repository.DiscoveredJobRepository) *Discover
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]`)
 
+// companyAliases maps a normalized company name to the one it is known by elsewhere,
+// for brand variants no suffix rule can catch. Keys and values are normalized names.
+var companyAliases = map[string]string{
+	// Seek lists Allume as "Allume Energy", LinkedIn as "Allume ANZ".
+	"allumeenergy": "allume",
+}
+
 // normalizeCompany makes "MYOB Group Ltd" and "myob group" compare equal, so the
 // applied-before flag is not defeated by punctuation or a legal suffix.
 func normalizeCompany(name string) string {
@@ -28,10 +35,15 @@ func normalizeCompany(name string) string {
 	for _, suffix := range []string{
 		" pty ltd", " pty limited", " pty", " ltd", " limited", " inc", " incorporated",
 		" group", " services", " of australia", " australia", " au",
+		" australia and new zealand", " australia & new zealand", " new zealand", " anz", " nz",
 	} {
 		lowered = strings.TrimSuffix(lowered, suffix)
 	}
-	return nonAlphanumeric.ReplaceAllString(lowered, "")
+	normalized := nonAlphanumeric.ReplaceAllString(lowered, "")
+	if alias, ok := companyAliases[normalized]; ok {
+		return alias
+	}
+	return normalized
 }
 
 // matchKey groups the same role scraped from different boards. The boards only

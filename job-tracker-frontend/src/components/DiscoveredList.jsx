@@ -35,6 +35,15 @@ const TIERS = [
   { key: 'easy_apply', label: 'Easy apply', match: () => true },
 ];
 
+// The board whose copy of a merged posting the title links to, best first. Every
+// board's copy stays one click away on its own pill.
+const BOARD_PRIORITY = ['linkedin', 'seek', 'indeed'];
+
+function boardRank(source) {
+  const rank = BOARD_PRIORITY.indexOf((source || '').toLowerCase());
+  return rank === -1 ? BOARD_PRIORITY.length : rank;
+}
+
 // The easiest way in wins: if any board offers Easy/Quick apply, the role is easy apply.
 const APPLY_RANK = { easy_apply: 2, external: 1, unknown: 0 };
 
@@ -54,7 +63,9 @@ function mergeDuplicates(jobs) {
     group.ids.push(job.id);
     group.postings.push(job);
     group.applied_before = group.applied_before || job.applied_before;
-    group.last_applied_at = group.last_applied_at || job.last_applied_at;
+    if (!group.last_applied_at || new Date(job.last_applied_at) > new Date(group.last_applied_at)) {
+      group.last_applied_at = job.last_applied_at || group.last_applied_at;
+    }
     group.apply_url = group.apply_url || job.apply_url;
     if ((APPLY_RANK[job.apply_type] || 0) > (APPLY_RANK[group.apply_type] || 0)) {
       group.apply_type = job.apply_type;
@@ -62,6 +73,15 @@ function mergeDuplicates(jobs) {
     if (new Date(job.discovered_at) < new Date(group.discovered_at)) {
       group.discovered_at = job.discovered_at;
     }
+  }
+  // Show and link the preferred board's copy; its pill comes first too.
+  for (const group of groups.values()) {
+    group.postings.sort((a, b) => boardRank(a.source) - boardRank(b.source));
+    const preferred = group.postings[0];
+    group.job_url = preferred.job_url;
+    group.job_title = preferred.job_title;
+    group.company_name = preferred.company_name;
+    group.location = preferred.location;
   }
   // Moving a group to its earliest day can break the DESC order the backend sent.
   return [...groups.values()].sort(
@@ -126,11 +146,19 @@ function formatDay(day) {
 }
 
 function formatAppliedDate(timestamp) {
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  const date = new Date(timestamp);
+  const formatted = date.toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
+
+  // Whole calendar days, so an application yesterday evening reads "1 day". Counted
+  // from local date parts, so a daylight-saving change cannot skew the difference.
+  const dayNumber = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+  const days = dayNumber(new Date()) - dayNumber(date);
+  const ago = days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`;
+  return `${formatted} (${ago})`;
 }
 
 export default function DiscoveredList({ jobs, onDismiss, loading }) {
@@ -193,7 +221,7 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
                             style={{ ...styles.badge, ...styles.link, backgroundColor: source.color }}
                             title={`Open on ${source.label}`}
                           >
-                            {source.label}
+                            {source.label} ↗
                           </a>
                         );
                       })}
