@@ -14,7 +14,8 @@ saving.
 1. For each board and each term in `config.json`, runs a JobSpy search for postings
    from the last `hours_old` hours — one board at a time, so a board that errors or
    throttles only loses its own results. JobSpy runs in-process, from the
-   `jobspy-mcp-server` fork (which adds Seek and `apply_type`), not through the MCP
+   `jobspy-mcp-server` fork (which adds Seek and `apply_type`; JobSpy is MIT-licensed,
+   see `jobspy/LICENSE` there), not through the MCP
    server: long searches inside the MCP pod stalled it until Kubernetes restarted it,
    which also took down the app's own job search.
    Seek is asked for two days, because its one-day filter means "listed today"; the

@@ -194,9 +194,9 @@ bun run lint
 
 ## Credits
 
-- [JobSpy](https://github.com/speedyapply/JobSpy) - Python library for searching jobs across Indeed, LinkedIn, Glassdoor, Google, ZipRecruiter & more
-- [JobSpy MCP Server](https://github.com/borgius/jobspy-mcp-server) - Model Context Protocol server this project was forked from
+- [JobSpy](https://github.com/speedyapply/JobSpy) by Cullen Watson and contributors (MIT) - Python library for searching jobs across Indeed, LinkedIn, Glassdoor, Google, ZipRecruiter & more. Used in a modified form (adds a Seek scraper and per-posting apply type), vendored in the fork [nuTTeLLo/jobspy-mcp-server](https://github.com/nuTTeLLo/jobspy-mcp-server) with its licence at `jobspy/LICENSE`
+- [JobSpy MCP Server](https://github.com/borgius/jobspy-mcp-server) - Model Context Protocol server the `jobspy-mcp-server` submodule is forked from
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE). Third-party code keeps its own licence: JobSpy and the MCP server are MIT, in the `jobspy-mcp-server` submodule.
