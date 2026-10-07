@@ -42,7 +42,3 @@ func (r *UserRepository) GetByID(id string) (*domain.User, error) {
 	}
 	return &user, nil
 }
-
-func (r *UserRepository) UpdatePasswordHash(id, hash string) error {
-	return r.db.Model(&domain.User{}).Where("id = ?", id).Update("password_hash", hash).Error
-}

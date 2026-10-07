@@ -8,9 +8,11 @@ import (
 )
 
 type User struct {
-	ID           string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	Email        string    `json:"email" gorm:"uniqueIndex;not null;type:varchar(255)"`
-	PasswordHash string    `json:"-" gorm:"not null;type:varchar(255)"`
+	ID    string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Email string `json:"email" gorm:"uniqueIndex;not null;type:varchar(255)"`
+	// PasswordHash is left over from password logins, which OAuth replaced.
+	// Kept (nullable) so existing rows migrate without losing the column.
+	PasswordHash *string   `json:"-" gorm:"type:varchar(255)"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -20,21 +22,6 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 		u.ID = uuid.New().String()
 	}
 	return nil
-}
-
-type RegisterInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type LoginInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type ChangePasswordInput struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
 }
 
 type AuthResponse struct {

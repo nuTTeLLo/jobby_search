@@ -200,19 +200,16 @@ export const deleteAttachment = async (jobId, attachmentId) => {
   await api.delete(`/api/jobs/${jobId}/attachments/${attachmentId}`);
 };
 
-export const registerUser = async ({ email, password }) => {
-  const res = await api.post('/api/auth/register', { email, password });
-  return res.data.data;
-};
+// Sign-in buttons navigate the whole page here: the browser has to actually
+// leave for Google/GitHub, which an XHR can't do.
+export const oauthStartUrl = (provider) => absoluteApiUrl(`/api/auth/${provider}/start`);
 
-export const loginUser = async ({ email, password }) => {
-  const res = await api.post('/api/auth/login', { email, password });
+// Called before the token is saved, so it passes the header itself.
+export const fetchMe = async (token) => {
+  const res = await api.get('/api/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data.data;
-};
-
-export const changePassword = async ({ current_password, new_password }) => {
-  const res = await api.post('/api/auth/change-password', { current_password, new_password });
-  return res.data;
 };
 
 export default api;
