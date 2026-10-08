@@ -24,6 +24,7 @@ type userStore interface {
 	Create(user *domain.User) error
 	GetByEmail(email string) (*domain.User, error)
 	GetByID(id string) (*domain.User, error)
+	ListGmailUsers() ([]domain.User, error)
 }
 
 type AuthService struct {
@@ -90,7 +91,7 @@ func (s *AuthService) loginByEmail(emails []string) (*domain.AuthResponse, error
 		return nil, ErrEmailNotAllowed
 	}
 
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := s.findUser(email)
 	if errors.Is(err, appErrors.ErrNotFound) {
 		user = &domain.User{Email: email}
 		err = s.userRepo.Create(user)
@@ -99,6 +100,27 @@ func (s *AuthService) loginByEmail(emails []string) (*domain.AuthResponse, error
 		return nil, err
 	}
 	return s.buildAuthResponse(user)
+}
+
+// findUser looks up the user for a canonical email. Rows from before OAuth
+// stored the address as typed, so a Gmail account may sit under an alias
+// (nut.tello+x@googlemail.com); fall back to comparing canonical forms rather
+// than create a second account for the same inbox.
+func (s *AuthService) findUser(email string) (*domain.User, error) {
+	user, err := s.userRepo.GetByEmail(email)
+	if !errors.Is(err, appErrors.ErrNotFound) || !strings.HasSuffix(email, "@gmail.com") {
+		return user, err
+	}
+	candidates, err := s.userRepo.ListGmailUsers()
+	if err != nil {
+		return nil, err
+	}
+	for i := range candidates {
+		if canonicalEmail(candidates[i].Email) == email {
+			return &candidates[i], nil
+		}
+	}
+	return nil, appErrors.ErrNotFound
 }
 
 func (s *AuthService) Me(userID string) (*domain.AuthUser, error) {

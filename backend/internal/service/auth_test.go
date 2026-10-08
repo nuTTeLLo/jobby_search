@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,16 @@ func (f *fakeUsers) GetByEmail(email string) (*domain.User, error) {
 		return u, nil
 	}
 	return nil, appErrors.ErrNotFound
+}
+
+func (f *fakeUsers) ListGmailUsers() ([]domain.User, error) {
+	var out []domain.User
+	for _, u := range f.byEmail {
+		if strings.HasSuffix(u.Email, "@gmail.com") || strings.HasSuffix(u.Email, "@googlemail.com") {
+			out = append(out, *u)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeUsers) GetByID(id string) (*domain.User, error) {
@@ -103,6 +114,25 @@ func TestGmailAliasMatchesExistingAccount(t *testing.T) {
 	}
 	if len(users.byEmail) != 1 {
 		t.Errorf("an alias created a second account: %v", users.byEmail)
+	}
+}
+
+// A row stored under an alias before OAuth must still be found, not duplicated.
+func TestLegacyGmailAliasRowIsReused(t *testing.T) {
+	users := &fakeUsers{byEmail: map[string]*domain.User{
+		"nut.tello+old@googlemail.com": {ID: "legacy-id", Email: "nut.tello+old@googlemail.com"},
+	}}
+	svc := NewAuthService(users, nil, []string{"nuttello@gmail.com"}, "secret", time.Hour)
+
+	resp, err := svc.loginByEmail([]string{"nuttello+dev@gmail.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.User.ID != "legacy-id" {
+		t.Errorf("got user %q, want legacy-id", resp.User.ID)
+	}
+	if len(users.byEmail) != 1 {
+		t.Errorf("created a second account: %v", users.byEmail)
 	}
 }
 

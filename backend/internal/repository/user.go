@@ -42,3 +42,11 @@ func (r *UserRepository) GetByID(id string) (*domain.User, error) {
 	}
 	return &user, nil
 }
+
+// ListGmailUsers returns users with a gmail.com or googlemail.com address, for
+// matching a canonical Gmail address against however a row stored it.
+func (r *UserRepository) ListGmailUsers() ([]domain.User, error) {
+	var users []domain.User
+	err := r.db.Where("LOWER(email) LIKE ? OR LOWER(email) LIKE ?", "%@gmail.com", "%@googlemail.com").Find(&users).Error
+	return users, err
+}
