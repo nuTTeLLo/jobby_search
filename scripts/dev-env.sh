@@ -7,28 +7,26 @@
 # config in several processes at once, and concurrent readers of one pipe each get
 # interleaved fragments ("failed to parse dotenv file"). So read it under a lock, one
 # process at a time. A regular .env file works the same way.
+#
+# The lock is a kernel file lock held by the reading `cat` (lockf on macOS, flock on
+# Linux): it is released when that process exits, even if it is killed, so there is
+# never a stale lock to clean up. The contents go through a shell variable, not disk.
 
 env_file="$("$(dirname "${BASH_SOURCE[0]}")/dev-workspace.sh" root)/backend/.env"
 
 if [ -e "$env_file" ]; then
   lock="${TMPDIR:-/tmp}/jobby-dev-env.lock"
-  got_lock=
-  for _ in $(seq 100); do
-    mkdir "$lock" 2>/dev/null && { got_lock=1; break; }
-    sleep 0.1
-  done
-  # A read takes well under a second, so a lock still held after ~10s was left by
-  # a killed process: take it over rather than fail on every later load.
-  if [ -z "$got_lock" ]; then
-    rmdir "$lock" 2>/dev/null
-    if ! mkdir "$lock" 2>/dev/null; then
-      echo "dev-env.sh: could not lock $lock; not reading $env_file" >&2
-      return 1
-    fi
-  fi
+  if command -v lockf >/dev/null; then
+    contents=$(lockf -k -t 30 "$lock" cat "$env_file")
+  else
+    contents=$(flock -w 30 "$lock" cat "$env_file")
+  fi || {
+    echo "dev-env.sh: could not read $env_file under lock $lock" >&2
+    return 1
+  }
   set -a
   # shellcheck disable=SC1090
-  . "$env_file"
+  . <(printf '%s\n' "$contents")
   set +a
-  rmdir "$lock" 2>/dev/null
+  unset contents
 fi
