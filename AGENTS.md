@@ -155,7 +155,17 @@ Supports SSE and Stdio transports. SSE enabled by default (`ENABLE_SSE=1`).
 | GET | `/api/discovered-jobs` | List scraped postings, last 7 days, with a cross-board `match_key` (`?include_dismissed=true`) |
 | POST | `/api/discovered-jobs` | Batch ingest from a scraper (upserts, then prunes) |
 | PATCH | `/api/discovered-jobs/:id/dismiss` | Hide a discovered posting |
+| GET | `/api/auth/{google,github}/start` | Begin OAuth sign-in (browser navigation, not XHR) |
+| GET | `/api/auth/{google,github}/callback` | Provider redirects here; redirects on to `FRONTEND_URL/auth/callback#token=<jwt>` |
+| GET | `/api/auth/me` | Current user (`{id, email}`) |
 | GET | `/health` | Health check |
+
+Sign-in is OAuth only (Google, GitHub); there are no passwords. A successful sign-in
+ends in the same HS256 JWT (`user_id`, `email`) as before, so anything that mints its
+own token from `JWT_SECRET` (the board scrape, the job-search sweeps) is unaffected.
+A provider's verified emails (GitHub: all of them, primary first) are checked against
+`ALLOWED_EMAILS` and matched to an existing user by email. Gmail aliases fold into the
+base inbox first (`nuttello+dev@gmail.com` → `nuttello@gmail.com`).
 
 ### MCP Server API (Port 9423)
 
@@ -177,6 +187,12 @@ DB_USER=jobuser
 DB_PASSWORD=jobpass
 DB_NAME=jobtracker
 MCP_SERVER_URL=http://localhost:9423
+JWT_SECRET=<required>
+GOOGLE_CLIENT_ID= / GOOGLE_CLIENT_SECRET=   # a provider is offered only if its ID is set
+GITHUB_CLIENT_ID= / GITHUB_CLIENT_SECRET=
+PUBLIC_BASE_URL=http://localhost:8080       # OAuth callbacks are <this>/api/auth/<provider>/callback
+FRONTEND_URL=http://localhost:5173          # where the browser lands after sign-in
+ALLOWED_EMAILS=<comma-separated>
 ```
 
 **Frontend**:

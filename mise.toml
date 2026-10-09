@@ -9,8 +9,9 @@ python = "3.10"
 # this workspace's dev port offset. See scripts/dev-workspace.sh.
 DEV_MAIN_ROOT = "{{ exec(command=config_root ~ '/scripts/dev-workspace.sh root') }}"
 DEV_PORT_OFFSET = "{{ exec(command=config_root ~ '/scripts/dev-workspace.sh offset') }}"
-# Backend secrets/config live in gitignored backend/.env (see backend/.env.example)
-_.file = "{{ env.DEV_MAIN_ROOT }}/backend/.env"
+# Backend secrets/config live in gitignored backend/.env (see backend/.env.example),
+# loaded one process at a time since it may be a 1Password pipe (see the script)
+_.source = "{{ config_root }}/scripts/dev-env.sh"
 # Python venv for the JobSpy runner (used by the MCP server's local dev task)
 _.python.venv = { path = "{{ env.DEV_MAIN_ROOT }}/.venv", create = true }
 
@@ -35,6 +36,8 @@ off=${DEV_PORT_OFFSET:-0}
 SERVER_PORT=$((8081 + off)) \
 MCP_SERVER_URL=http://localhost:$((9423 + off)) \
 ALLOWED_ORIGINS=http://localhost:$((5173 + off)),http://sprite-studio.tailee323f.ts.net:$((5173 + off)) \
+PUBLIC_BASE_URL=http://localhost:$((8081 + off)) \
+FRONTEND_URL=http://localhost:$((5173 + off)) \
   go run ./cmd/server/
 """
 

@@ -42,7 +42,7 @@ func main() {
 	}
 
 	// Seed nuttello@gmail.com and backfill existing jobs to that user
-	if err := seedAndBackfill(db, cfg); err != nil {
+	if err := seedAndBackfill(db); err != nil {
 		log.Fatalf("Failed to seed user and backfill jobs: %v", err)
 	}
 
@@ -65,11 +65,15 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	discoveredRepo := repository.NewDiscoveredJobRepository(db)
 	jobService := service.NewJobService(jobRepo, cfg.MCPServerURL)
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiration)
+	providers := auth.NewProviders(cfg.PublicBaseURL, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GitHubClientID, cfg.GitHubClientSecret)
+	if len(providers) == 0 {
+		log.Print("Warning: no OAuth provider configured (GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID); nobody can sign in")
+	}
+	authService := service.NewAuthService(userRepo, providers, cfg.AllowedEmails, cfg.JWTSecret, cfg.JWTExpiration)
 	discoveredService := service.NewDiscoveredJobService(discoveredRepo)
 	jobHandler := handler.NewJobHandler(jobService, cfg.JWTSecret)
 	attachmentHandler := handler.NewAttachmentHandler(jobService, cfg.JWTSecret)
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, cfg.FrontendURL, strings.HasPrefix(cfg.PublicBaseURL, "https://"))
 	discoveredHandler := handler.NewDiscoveredJobHandler(discoveredService)
 
 	authMW := appMiddleware.Authenticate(cfg.JWTSecret)
@@ -101,7 +105,7 @@ func main() {
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(authMW)
-		r.Post("/api/auth/change-password", authHandler.ChangePassword)
+		r.Get("/api/auth/me", authHandler.Me)
 		r.Mount("/api/jobs", jobHandler.Routes())
 		r.Mount("/api/jobs/{id}/attachments", attachmentHandler.Routes())
 		r.Mount("/api/discovered-jobs", discoveredHandler.Routes())
@@ -114,7 +118,7 @@ func main() {
 	}
 }
 
-func seedAndBackfill(db *gorm.DB, cfg *config.Config) error {
+func seedAndBackfill(db *gorm.DB) error {
 	const seedEmail = "nuttello@gmail.com"
 
 	// Check if seed user already exists
@@ -126,20 +130,9 @@ func seedAndBackfill(db *gorm.DB, cfg *config.Config) error {
 		return nil
 	}
 
-	// First boot: require seed password
-	if cfg.SeedUserPassword == "" {
-		log.Fatal("SEED_USER_PASSWORD env var must be set on first boot to create the initial user account")
-	}
-
-	hash, err := auth.HashPassword(cfg.SeedUserPassword)
-	if err != nil {
-		return fmt.Errorf("failed to hash seed password: %w", err)
-	}
-
-	seedUser := &domain.User{
-		Email:        seedEmail,
-		PasswordHash: hash,
-	}
+	// First boot. No password: the owner signs in through OAuth, matched by
+	// this email (which must also be in ALLOWED_EMAILS).
+	seedUser := &domain.User{Email: seedEmail}
 	if err := db.Create(seedUser).Error; err != nil {
 		return fmt.Errorf("failed to create seed user: %w", err)
 	}

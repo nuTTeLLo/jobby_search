@@ -1,30 +1,25 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { loginUser } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
+import { oauthStartUrl } from '../services/api';
+
+const ERROR_MESSAGES = {
+  cancelled: 'Sign-in was cancelled.',
+  expired: 'Sign-in took too long. Please try again.',
+  state_mismatch: 'Sign-in could not be verified. Please try again.',
+  not_allowed: 'That account is not allowed to use Job Tracker.',
+  no_verified_email: 'Your account has no verified email address.',
+  unknown_provider: 'That sign-in option is not available.',
+  failed: 'Sign-in failed. Please try again.',
+};
+
+const PROVIDERS = [
+  { id: 'google', label: 'Sign in with Google' },
+  { id: 'github', label: 'Sign in with GitHub' },
+];
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const data = await loginUser({ email, password });
-      login(data.token, data.user);
-      navigate('/');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [params] = useSearchParams();
+  const errorCode = params.get('error');
+  const error = errorCode && (ERROR_MESSAGES[errorCode] || ERROR_MESSAGES.failed);
 
   return (
     <div style={styles.container}>
@@ -32,30 +27,11 @@ export default function LoginPage() {
         <h2 style={styles.title}>Job Tracker</h2>
         <p style={styles.subtitle}>Sign in to your account</p>
         {error && <div style={styles.error}>{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <input
-            style={styles.input}
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            style={styles.input}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <button style={styles.button} type="submit" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-        <p style={styles.link}>
-          Don&apos;t have an account? <Link to="/signup">Sign up</Link>
-        </p>
+        {PROVIDERS.map(({ id, label }) => (
+          <a key={id} style={styles.button} href={oauthStartUrl(id)}>
+            {label}
+          </a>
+        ))}
       </div>
     </div>
   );
@@ -98,16 +74,6 @@ const styles = {
     marginBottom: '16px',
     fontSize: '14px',
   },
-  input: {
-    display: 'block',
-    width: '100%',
-    padding: '10px 12px',
-    marginBottom: '12px',
-    border: '1px solid #dee2e6',
-    borderRadius: '4px',
-    fontSize: '14px',
-    boxSizing: 'border-box',
-  },
   button: {
     display: 'block',
     width: '100%',
@@ -117,13 +83,9 @@ const styles = {
     border: 'none',
     borderRadius: '4px',
     fontSize: '14px',
-    cursor: 'pointer',
-    marginTop: '4px',
-  },
-  link: {
-    marginTop: '20px',
     textAlign: 'center',
-    fontSize: '14px',
-    color: '#6c757d',
+    textDecoration: 'none',
+    boxSizing: 'border-box',
+    marginTop: '12px',
   },
 };
