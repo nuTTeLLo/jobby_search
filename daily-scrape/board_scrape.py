@@ -387,9 +387,10 @@ def format_digest(jobs, counts, warnings, cfg, run_time):
 # --------------------------------------------------------------------------- notify
 
 TELEGRAM_API = "https://api.telegram.org/bot%s/sendMessage"
-# Telegram rejects messages over 4096 characters; listing this many roles keeps the
-# summary well under that and still readable on a lock screen.
+# Listing this many roles keeps the summary readable on a lock screen; anything
+# still over Telegram's 4096-character limit is split across messages.
 TELEGRAM_MAX_ROLES = 20
+TELEGRAM_MAX_CHARS = 4096
 BOARD_NAMES = {"linkedin": "LinkedIn", "seek": "Seek", "indeed": "Indeed"}
 
 
@@ -399,7 +400,9 @@ def format_telegram(jobs, result, warnings, run_time, discovered_url):
     for job in jobs:
         key = (job["company_name"].strip().lower(), job["job_title"].strip().lower())
         role = roles.setdefault(key, {"job": job, "sources": []})
-        role["sources"].append(BOARD_NAMES.get(job["source"], job["source"]))
+        board = BOARD_NAMES.get(job["source"], job["source"])
+        if board not in role["sources"]:
+            role["sources"].append(board)
 
     lines = [
         "🔎 Job Discovery — %s" % run_time.strftime("%-d %b"),
@@ -435,24 +438,51 @@ def format_telegram(jobs, result, warnings, run_time, discovered_url):
     return "\n".join(lines)
 
 
+def split_message(text, limit=TELEGRAM_MAX_CHARS):
+    """Split at line boundaries into parts Telegram accepts, hard-cutting only a
+    single line that is longer than the limit on its own."""
+    parts, current = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if current:
+                parts.append(current)
+                current = ""
+            parts.append(line[:limit])
+            line = line[limit:]
+        candidate = current + "\n" + line if current else line
+        if len(candidate) > limit:
+            parts.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts
+
+
 def send_telegram(cfg, text):
     """Best effort: a missing or failing bot never fails the scrape."""
     token, chat_id = cfg.get("telegram_bot_token"), cfg.get("telegram_chat_id")
     if not token or not chat_id:
         print("Telegram: not configured, summary not sent.")
         return
-    data = urllib.parse.urlencode(
-        {"chat_id": chat_id, "text": text[:4096], "disable_web_page_preview": "true"}
-    ).encode()
-    try:
-        with urllib.request.urlopen(TELEGRAM_API % token, data=data, timeout=20) as resp:
-            print("Telegram: summary sent (%d)." % resp.status)
-    except Exception as exc:  # noqa: BLE001 - never let the notification fail the run
-        # The URL holds the token, so report only the error type and HTTP status.
-        print(
-            "Telegram: send failed (%s %s)" % (type(exc).__name__, getattr(exc, "code", "")),
-            file=sys.stderr,
-        )
+    parts = split_message(text)
+    for number, part in enumerate(parts, 1):
+        data = urllib.parse.urlencode(
+            {"chat_id": chat_id, "text": part, "disable_web_page_preview": "true"}
+        ).encode()
+        try:
+            with urllib.request.urlopen(TELEGRAM_API % token, data=data, timeout=20):
+                pass
+        except Exception as exc:  # noqa: BLE001 - never let the notification fail the run
+            # The URL holds the token, so report only the error type and HTTP status.
+            print(
+                "Telegram: send failed on part %d of %d (%s %s)"
+                % (number, len(parts), type(exc).__name__, getattr(exc, "code", "")),
+                file=sys.stderr,
+            )
+            return
+    print("Telegram: summary sent (%d message%s)." % (len(parts), "" if len(parts) == 1 else "s"))
 
 
 def notify_failure(cfg, run_time, message):
