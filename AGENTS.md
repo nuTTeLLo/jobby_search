@@ -85,7 +85,7 @@ the submodule), and POSTs the results to `/api/discovered-jobs`, which surfaces 
 page (`/discovered`). It runs as the k3s CronJob `board-scrape` at 09:00 Australia/Melbourne (manifest lives in the
 `raspi` repo, `k8s-services/job-tracker/09-cronjob-board-scrape.yaml`); the image is
 built by the same `docker.yml` matrix as the other services, as
-`ghcr.io/nuttello/job-tracker-scraper`. It holds no local state — the API upserts on
+`ghcr.io/nuttello/job-tracker-scraper`. It sends a Telegram summary of each run (optional; bot token and chat id are fields on the "Job Tracker (prod)" 1Password item, synced into `job-tracker-secret`). It holds no local state — the API upserts on
 `(user_id, external_id)` and prunes to a rolling 7-day window. The same role on several
 boards is grouped on read by normalised company + title (`match_key`). See
 `daily-scrape/README.md`.

@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
@@ -94,6 +95,9 @@ def load_config(path):
         ("TRACKER_EMAIL", "tracker_email"),
         ("JWT_SECRET", "jwt_secret"),
         ("SEARCH_LOCATION", "location"),
+        ("TELEGRAM_BOT_TOKEN", "telegram_bot_token"),
+        ("TELEGRAM_CHAT_ID", "telegram_chat_id"),
+        ("DISCOVERED_URL", "discovered_url"),
     ):
         value = os.environ.get(env_key)
         if value:
@@ -380,6 +384,81 @@ def format_digest(jobs, counts, warnings, cfg, run_time):
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- notify
+
+TELEGRAM_API = "https://api.telegram.org/bot%s/sendMessage"
+# Telegram rejects messages over 4096 characters; listing this many roles keeps the
+# summary well under that and still readable on a lock screen.
+TELEGRAM_MAX_ROLES = 20
+BOARD_NAMES = {"linkedin": "LinkedIn", "seek": "Seek", "indeed": "Indeed"}
+
+
+def format_telegram(jobs, result, warnings, run_time, discovered_url):
+    """Short summary for Telegram: one line per role, with the boards it is on."""
+    roles = {}
+    for job in jobs:
+        key = (job["company_name"].strip().lower(), job["job_title"].strip().lower())
+        role = roles.setdefault(key, {"job": job, "sources": []})
+        role["sources"].append(BOARD_NAMES.get(job["source"], job["source"]))
+
+    lines = [
+        "🔎 Job Discovery — %s" % run_time.strftime("%-d %b"),
+        "",
+        "%d new, %d already listed (%d role%s)"
+        % (
+            result.get("created", 0),
+            result.get("updated", 0),
+            len(roles),
+            "" if len(roles) == 1 else "s",
+        ),
+    ]
+    if roles:
+        lines.append("")
+    for role in list(roles.values())[:TELEGRAM_MAX_ROLES]:
+        job = role["job"]
+        lines.append(
+            "• %s — %s (%s)"
+            % (job["company_name"] or "?", job["job_title"], ", ".join(role["sources"]))
+        )
+    if len(roles) > TELEGRAM_MAX_ROLES:
+        lines.append("…and %d more" % (len(roles) - TELEGRAM_MAX_ROLES))
+
+    if warnings:
+        lines.append("")
+        lines.append("⚠️ Warnings:")
+        lines.extend("• %s" % warning for warning in warnings)
+
+    if discovered_url:
+        lines.append("")
+        lines.append(discovered_url)
+
+    return "\n".join(lines)
+
+
+def send_telegram(cfg, text):
+    """Best effort: a missing or failing bot never fails the scrape."""
+    token, chat_id = cfg.get("telegram_bot_token"), cfg.get("telegram_chat_id")
+    if not token or not chat_id:
+        print("Telegram: not configured, summary not sent.")
+        return
+    data = urllib.parse.urlencode(
+        {"chat_id": chat_id, "text": text[:4096], "disable_web_page_preview": "true"}
+    ).encode()
+    try:
+        with urllib.request.urlopen(TELEGRAM_API % token, data=data, timeout=20) as resp:
+            print("Telegram: summary sent (%d)." % resp.status)
+    except Exception as exc:  # noqa: BLE001 - never let the notification fail the run
+        # The URL holds the token, so report only the error type and HTTP status.
+        print(
+            "Telegram: send failed (%s %s)" % (type(exc).__name__, getattr(exc, "code", "")),
+            file=sys.stderr,
+        )
+
+
+def notify_failure(cfg, run_time, message):
+    send_telegram(cfg, "❌ Job Discovery — %s\n\n%s" % (run_time.strftime("%-d %b"), message))
+
+
 # ----------------------------------------------------------------------------- main
 
 
@@ -466,11 +545,12 @@ def main():
             )
 
     if not any(counts.values()):
-        print(
-            "FATAL: every search returned zero results (%s)"
-            % ("; ".join(warnings) or "no errors reported"),
-            file=sys.stderr,
+        message = "every search returned zero results (%s)" % (
+            "; ".join(warnings) or "no errors reported"
         )
+        print("FATAL: " + message, file=sys.stderr)
+        if not args.dry_run:
+            notify_failure(cfg, run_time, message)
         return 1
 
     # 2. classify how each survivor is applied to
@@ -503,10 +583,9 @@ def main():
     try:
         result = post_jobs(cfg, jobs)
     except Exception as exc:  # noqa: BLE001 - any failure here must be loud
-        print(
-            "FATAL: posting to tracker failed (%s: %s)" % (type(exc).__name__, exc),
-            file=sys.stderr,
-        )
+        message = "posting to tracker failed (%s: %s)" % (type(exc).__name__, exc)
+        print("FATAL: " + message, file=sys.stderr)
+        notify_failure(cfg, run_time, message)
         return 1
 
     print(
@@ -517,6 +596,9 @@ def main():
             result.get("updated", 0),
             result.get("pruned", 0),
         )
+    )
+    send_telegram(
+        cfg, format_telegram(jobs, result, warnings, run_time, cfg.get("discovered_url"))
     )
     return 0
 
