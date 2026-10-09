@@ -64,6 +64,10 @@ settings come from the environment and override the file:
 | `TRACKER_USER_ID`, `TRACKER_EMAIL` | Claims for the minted token (not in `config.json`; the CronJob sets them) |
 | `JWT_SECRET` | Signing secret, from the `job-tracker-secret` secret |
 | `SEARCH_LOCATION`, `HOURS_OLD`, `SITES` | Occasional overrides without rebuilding |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional. Send a Telegram summary after each run, and an alert when it fails. From `job-tracker-secret` (fields on the "Job Tracker (prod)" 1Password item); unset means no message |
+| `DISCOVERED_URL` | Optional link to the Discovered page, appended to the summary |
+
+The Telegram summary lists each matched role once, with the boards it was found on, up to 20 roles, plus any warnings. A run that fails outright (every search empty, or the tracker POST failing) sends a `❌` alert instead. Sending is best effort: a missing or failing bot is logged and never fails the run. The CronJob retries a failed run up to twice, so a persistent failure can alert up to three times. A dry run sends nothing.
 
 ## Running locally
 
