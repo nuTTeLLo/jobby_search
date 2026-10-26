@@ -99,7 +99,7 @@ judged against the free-text fit profile on the frontend's **Profile** page
 on the user's Claude subscription, **on the user's Mac**, not in the cluster: one
 run peaks around 300 MB, against the backend pod's 96Mi limit on a node near its
 memory ceiling. `backend/cmd/fitsweep` runs from the launchd agent
-`com.adriantan.jobsearch.fitsweep` at 09:30, after the board scrape. It takes
+`com.jobbysearch.fitsweep` at 09:30, after the board scrape. It takes
 `GET /api/discovered-jobs/unscored`, scores each role once, stores the scores with
 `PUT /api/discovered-jobs/:id/fit`, and sends a Telegram "top fits" message. See
 `scripts/fitsweep/README.md`.

@@ -9,7 +9,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-label="com.adriantan.jobsearch.fitsweep"
+label="com.jobbysearch.fitsweep"
 plist="$HOME/Library/LaunchAgents/$label.plist"
 config="$HOME/.config/jobsearch/fitsweep.env"
 logs="$HOME/Library/Logs/JobSearch"

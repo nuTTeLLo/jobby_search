@@ -33,7 +33,7 @@ failures in a row.
    The file is read from `~/.config` so that the job never touches OneDrive.
 2. Run `scripts/fitsweep/install.sh`. It builds the sweep, installs the wrapper as
    `~/.local/bin/jobsearch-fitsweep`, and loads the LaunchAgent
-   `com.adriantan.jobsearch.fitsweep`.
+   `com.jobbysearch.fitsweep`.
 3. Try it: `jobsearch-fitsweep --dry-run` scores and prints the message without
    storing anything or sending it.
 
