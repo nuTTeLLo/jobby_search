@@ -66,10 +66,12 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setSaving(true);
+    const submitted = draft;
     try {
-      const profile = await updateProfile({ fit_profile: draft });
+      const profile = await updateProfile({ fit_profile: submitted });
       setSaved(profile);
-      setDraft(profile.fit_profile || '');
+      // Take the saved (trimmed) text, unless the user kept typing while it saved.
+      setDraft((current) => (current === submitted ? profile.fit_profile || '' : current));
       setMessage({ text: 'Profile saved', type: 'success' });
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {

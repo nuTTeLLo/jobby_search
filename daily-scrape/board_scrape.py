@@ -286,6 +286,8 @@ def seek_details(job_id, warnings):
         job = json.loads(body)["data"]["jobDetails"]["job"]
     except (TypeError, ValueError, KeyError):
         return APPLY_UNKNOWN, None
+    if not isinstance(job, dict):  # null for a posting that has been taken down
+        return APPLY_UNKNOWN, None
     is_link_out = job.get("isLinkOut")
     if is_link_out is None:
         apply_type = APPLY_UNKNOWN
