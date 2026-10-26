@@ -90,7 +90,7 @@ dispatch.py <url> [recruiter y|n] [easyapply y|n] [--backend tuios|herdr] [--sou
 Prints one line on stdout for the notification; exits non-zero with the reason on
 stderr. `--dry-run` shows the message and the chosen session without sending.
 
-Source is detected from the host (`linkedin.com`→L, `indeed.`→I, `seek.com.au`→S,
+Source is detected from the host (`linkedin.com`→L, `indeed.`→I, `seek.com`→S,
 `glassdoor.`→G, anything else→O) and overridable with `--source`. Postings
 rehosted on Workday/Greenhouse/LiveHire correctly land on `O`; the workflow's own
 source-mismatch rule records the real origin downstream.
