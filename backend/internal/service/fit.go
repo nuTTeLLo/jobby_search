@@ -16,6 +16,10 @@ import (
 // a fit profile and the request did not include one.
 var ErrNoFitProfile = errors.New("no fit profile saved")
 
+// ErrFitProfileTooLong means a fit_profile override is over the limit a saved
+// profile has to meet.
+var ErrFitProfileTooLong = errors.New("fit profile too long")
+
 type FitService struct {
 	profiles *repository.ProfileRepository
 	fetcher  *fit.Fetcher
@@ -39,6 +43,9 @@ func (s *FitService) Check(ctx context.Context, userID string, input *domain.Fit
 	}
 	if profile == "" {
 		return nil, ErrNoFitProfile
+	}
+	if utf8.RuneCountInString(profile) > domain.MaxFitProfileLength {
+		return nil, ErrFitProfileTooLong
 	}
 
 	posting := &domain.FitPosting{Source: "manual"}

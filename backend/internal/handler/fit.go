@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -44,6 +45,8 @@ func (h *FitHandler) CheckFit(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, appErrors.ErrInvalidInput):
 			status, message = http.StatusBadRequest, "Give a url, or at least a job_title or description"
+		case errors.Is(err, service.ErrFitProfileTooLong):
+			status, message = http.StatusBadRequest, fmt.Sprintf("Fit profile must be at most %d characters", domain.MaxFitProfileLength)
 		case errors.Is(err, service.ErrNoFitProfile):
 			status, message = http.StatusBadRequest, "No fit profile saved; save one on the Profile page or send fit_profile"
 		case errors.Is(err, fit.ErrFetch):
