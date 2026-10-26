@@ -17,8 +17,31 @@ expects:
 ```
 File → Share (Brave / Safari / Zen)
    └─> Shortcut "Send to Job-Apply"
-         └─> dispatch.py  ──herdr──>  a free Job-Apply-N session
+         └─> dispatch.py  ──tuios | herdr──>  a free Job-Apply-N session
 ```
+
+## tuios or herdr
+
+tuios and herdr each run their **own** `Job-Apply-N` sessions -- separate Claude
+processes with separate transcripts, even when the names match. tuios answers
+herdr's command line on a socket of its own, so both are driven through the same
+herdr CLI; only the socket differs. Pick one with `--backend`:
+
+| `--backend` | Sessions | Socket |
+|---|---|---|
+| `tuios` (default) | `tuios list-agents` | `/tmp/tuios-<uid>/tuios.sock.herdr` |
+| `herdr` | `herdr agent list` | herdr's own server |
+
+`JOB_DISPATCH_BACKEND` sets the default when the flag is absent. The script
+always sets or clears `HERDR_SOCKET_PATH` itself: a tuios pane already exports
+it, so a herdr dispatch run from a tuios terminal would otherwise land in tuios.
+If tuios is chosen and its socket is missing, the run fails with
+`tuios is not running` rather than falling back to herdr's sessions.
+
+Two differences in what tuios reports are absorbed: it sends only
+`terminal_title`, which Claude prefixes with a status glyph (`✳ Job-Apply-3`),
+so leading glyphs are stripped; and it marks a session `done` after a turn where
+herdr says `idle`, so both count as free and the transcript check decides.
 
 ## How a session is chosen
 
@@ -26,7 +49,7 @@ A session must be **both** idle **and** cleared.
 
 That second condition is the point of this tool. A session parked at Step 9 —
 resume built, waiting for you to review it and decide about a cover letter —
-still reports `idle` to herdr. Dispatching into it would bury work you haven't
+still reports `idle` (or `done`). Dispatching into it would bury work you haven't
 looked at yet. The convention is that a session is done only once you've
 actioned the output and typed `/clear`, so freshness is checked separately:
 
@@ -40,12 +63,12 @@ user-role entries for the `/clear` command itself and its
 as used.
 
 Which transcript is "its transcript" needs care. `/clear` starts a **new**
-session (and transcript) in the same pane, but herdr's `agent_session` can keep
+session (and transcript) in the same pane, but the reported `agent_session` can keep
 reporting the old id for a while — sometimes indefinitely — and that old
 transcript still shows the finished job, so the pane would read `needs /clear`
 even though it's free. Claude tags each new transcript with the pane's name in
 its first rows (`custom-title` / `agent-name`), so the script uses whichever
-starts later: herdr's session, or the newest transcript named `Job-Apply-N`.
+starts later: the reported session, or the newest transcript named `Job-Apply-N`.
 Start time comes from the first timestamped row, not the file mtime, because
 Claude touches old transcripts without adding turns. Overrides are logged as
 `session_override`.
@@ -61,7 +84,7 @@ has flushed the first one to its transcript.
 ## dispatch.py
 
 ```
-dispatch.py <url> [recruiter y|n] [easyapply y|n] [--source X] [--target <pane>] [--dry-run]
+dispatch.py <url> [recruiter y|n] [easyapply y|n] [--backend tuios|herdr] [--source X] [--target <pane>] [--dry-run]
 ```
 
 Prints one line on stdout for the notification; exits non-zero with the reason on
@@ -77,9 +100,9 @@ Two constraints worth preserving if you edit it:
 - **Stdlib only, `/usr/bin/python3` shebang.** Shortcuts' Run Shell Script runs in
   a sandbox with a minimal PATH that doesn't source your profile, so nix/mise
   interpreters aren't reachable from there.
-- **`herdr` is called at `/etc/profiles/per-user/adrian/bin/herdr`** — the stable
-  profile symlink, not the resolved `/nix/store/...-herdr-<ver>/bin/herdr`, which
-  changes on every herdr update.
+- **`herdr` is called at `/etc/profiles/per-user/adrian/bin/herdr`** for both
+  backends — the stable profile symlink, not the resolved
+  `/nix/store/...-herdr-<ver>/bin/herdr`, which changes on every herdr update.
 
 ## Rebuilding the Shortcut
 
@@ -125,8 +148,8 @@ re-importing doesn't fight you.
 
 ### First run
 
-Expect prompts for file access (reading `~/.claude/projects`) and for the herdr
-socket. The Quick Action must also be enabled under System Settings → Extensions
+Expect prompts for file access (reading `~/.claude/projects`) and for the
+tuios or herdr socket. The Quick Action must also be enabled under System Settings → Extensions
 → Sharing if it doesn't appear in the Share menu.
 
 ## Which URL gets used
@@ -242,4 +265,4 @@ be inspected directly, so when a dispatch looks wrong, start here.
   LinkedIn login-wall fallback ever becomes annoying, that's the cheapest way to
   hand the session a rendered job description — Safari only.
 - `dispatch.py`'s only coupling to the rest of this repo is conceptual; it talks
-  to herdr and the OneDrive workflow folder, never to the tracker API or database.
+  to tuios/herdr and the OneDrive workflow folder, never to the tracker API or database.

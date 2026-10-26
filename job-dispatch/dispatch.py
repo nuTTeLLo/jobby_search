@@ -3,7 +3,8 @@
 
 Invoked by the "Send to Job-Apply" Shortcut (macOS Share Sheet). Builds the
 4-line trigger message that the job-search workflow expects and submits it to a
-Job-Apply-N pane via herdr.
+Job-Apply-N pane, in tuios (the default) or herdr. tuios answers herdr's
+command line on its own socket, so both are driven through the herdr CLI.
 
 Stdlib only, and run with /usr/bin/python3 on purpose: Shortcuts' Run Shell
 Script executes in a sandbox with a minimal PATH that does not source the user's
@@ -23,8 +24,23 @@ from urllib.parse import urlparse
 # changes on every herdr update.
 HERDR = "/etc/profiles/per-user/adrian/bin/herdr"
 
+# Which multiplexer's sessions to dispatch into. tuios and herdr each run their
+# own Job-Apply-N sessions; tuios's herdr-compatible socket lives at a path
+# derived from the uid, so it survives daemon restarts. None means herdr's own
+# server, which the herdr CLI finds by itself.
+BACKEND_SOCKETS = {
+    "tuios": "/tmp/tuios-%d/tuios.sock.herdr" % os.getuid(),
+    "herdr": None,
+}
+DEFAULT_BACKEND = "tuios"
+
 JOB_SEARCH_DIR = "/Users/adrian/Remotes/OneDrive/My Job Search"
 PANE_TITLE_RE = re.compile(r"^Job-Apply-(\d+)$")
+# tuios sends only the raw title, which Claude prefixes with a status glyph.
+TITLE_GLYPHS_RE = re.compile(r"^[^\w]+")
+# tuios marks a session "done" when it finishes a turn; herdr leaves it "idle".
+# Either is free as far as status goes -- is_cleared() decides the rest.
+FREE_STATUSES = ("idle", "done")
 CLEAR_MARKER = "<command-name>/clear</command-name>"
 # Claude writes the session's name in its first rows; only read that far.
 NAME_ROW_TYPES = ("custom-title", "agent-name")
@@ -187,10 +203,28 @@ def live_url():
     return None, app
 
 
-def run_herdr(*args):
+def backend_env(backend):
+    """Environment that points the herdr CLI at the chosen backend.
+
+    HERDR_SOCKET_PATH is always set or removed explicitly: run from a tuios pane
+    it is already set to tuios's socket, which would send a herdr dispatch to
+    tuios.
+    """
+    env = dict(os.environ)
+    socket_path = BACKEND_SOCKETS[backend]
+    if socket_path is None:
+        env.pop("HERDR_SOCKET_PATH", None)
+        return env
+    if not os.path.exists(socket_path):
+        raise DispatchError("%s is not running (no socket at %s)" % (backend, socket_path))
+    env["HERDR_SOCKET_PATH"] = socket_path
+    return env
+
+
+def run_herdr(*args, env=None):
     try:
         proc = subprocess.run(
-            [HERDR, *args], capture_output=True, text=True, timeout=30
+            [HERDR, *args], capture_output=True, text=True, timeout=30, env=env
         )
     except FileNotFoundError:
         raise DispatchError("herdr not found at %s" % HERDR)
@@ -293,16 +327,23 @@ def current_session_id(title, herdr_id, latest, tdir):
     return newest[1]
 
 
-def list_sessions(cwd):
+def pane_title(agent):
+    stripped = agent.get("terminal_title_stripped")
+    if stripped:
+        return stripped
+    return TITLE_GLYPHS_RE.sub("", agent.get("terminal_title") or "").strip()
+
+
+def list_sessions(cwd, env):
     """Job-Apply-N agents in cwd, ordered by their numeric suffix."""
-    payload = run_herdr("agent", "list")
+    payload = run_herdr("agent", "list", env=env)
     tdir = transcript_dir(cwd)
     latest = latest_named_sessions(tdir)
     found = []
     for agent in payload.get("result", {}).get("agents", []):
         if agent.get("cwd") != cwd:
             continue
-        title = agent.get("terminal_title_stripped") or ""
+        title = pane_title(agent)
         match = PANE_TITLE_RE.match(title)
         if not match:
             continue
@@ -387,7 +428,7 @@ def choose(sessions, tdir, state):
     """First eligible session, or a per-session explanation of why not."""
     reasons = []
     for session in sessions:
-        if session["status"] != "idle":
+        if session["status"] not in FREE_STATUSES:
             reasons.append((session["title"], session["status"]))
         elif in_cooldown(session, state):
             reasons.append((session["title"], "just dispatched"))
@@ -413,6 +454,12 @@ def main():
     parser.add_argument("--source", help="override the auto-detected source letter")
     parser.add_argument("--cwd", default=JOB_SEARCH_DIR)
     parser.add_argument("--target", help="dispatch to this pane_id instead of the first free one")
+    parser.add_argument(
+        "--backend", choices=sorted(BACKEND_SOCKETS),
+        default=os.environ.get("JOB_DISPATCH_BACKEND") or DEFAULT_BACKEND,
+        help="multiplexer whose Job-Apply sessions to use (default: $JOB_DISPATCH_BACKEND, else %s)"
+        % DEFAULT_BACKEND,
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--resolve-only", action="store_true",
@@ -430,6 +477,11 @@ def main():
         help="dispatch even if this URL matches the previous one",
     )
     args = parser.parse_args()
+    # argparse checks choices only for values given on the command line, not
+    # for a default taken from the environment.
+    if args.backend not in BACKEND_SOCKETS:
+        parser.error("JOB_DISPATCH_BACKEND=%r is not one of: %s"
+                     % (args.backend, ", ".join(sorted(BACKEND_SOCKETS))))
     log("invoked", argv=sys.argv[1:])
 
     raw = args.url
@@ -471,9 +523,10 @@ def main():
             "page. Re-share, or pass --force if this repeat is deliberate."
         )
 
-    sessions = list_sessions(args.cwd)
+    env = backend_env(args.backend)
+    sessions = list_sessions(args.cwd, env)
     if not sessions:
-        raise DispatchError("no Job-Apply sessions found in %s" % args.cwd)
+        raise DispatchError("no %s Job-Apply sessions found in %s" % (args.backend, args.cwd))
 
     tdir = transcript_dir(args.cwd)
     state = read_state()
@@ -483,7 +536,7 @@ def main():
         if chosen is None:
             raise DispatchError("no such pane: %s" % args.target)
         # An explicit target still gets tested, so it can't clobber unactioned work.
-        if chosen["status"] != "idle":
+        if chosen["status"] not in FREE_STATUSES:
             raise DispatchError("%s is %s" % (chosen["title"], chosen["status"]))
         if not is_cleared(chosen["session_id"], tdir):
             raise DispatchError("%s needs /clear" % chosen["title"])
@@ -495,15 +548,15 @@ def main():
         raise DispatchError("no free session: %s" % summarise(reasons))
 
     if args.dry_run:
-        print("would send to %s (%s):" % (chosen["title"], chosen["pane_id"]))
+        print("would send to %s %s (%s):" % (args.backend, chosen["title"], chosen["pane_id"]))
         for line in message.splitlines():
             print("  | %s" % line)
         if reasons:
             print("skipped: %s" % summarise(reasons))
         return
 
-    log("dispatch", url=url, source=source, pane=chosen["pane_id"])
-    run_herdr("agent", "prompt", chosen["pane_id"], message)
+    log("dispatch", url=url, source=source, pane=chosen["pane_id"], backend=args.backend)
+    run_herdr("agent", "prompt", chosen["pane_id"], message, env=env)
     write_state(chosen["pane_id"], url)
     origin = "live" if live else "share sheet"
     flags = "".join([" recruiter" if args.recruiter == "y" else "",
