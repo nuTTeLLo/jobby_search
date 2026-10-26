@@ -1,3 +1,5 @@
+import { isLowFit } from '../constants/fit';
+
 const APPLY_BADGES = {
   easy_apply: { label: 'Easy Apply', color: '#198754' },
   external: { label: 'External', color: '#6c757d' },
@@ -18,10 +20,29 @@ function sourceBadge(source) {
   return SOURCE_BADGES[key] || { label: source || 'Unknown source', color: '#495057' };
 }
 
+// The daily scrape scores each posting 1-5 against the fit profile. Unscored
+// postings (no profile, or scoring failed) show no badge.
+const FIT_BADGES = {
+  5: { label: 'Strong fit', color: '#146c43' },
+  4: { label: 'Good fit', color: '#198754' },
+  3: { label: 'Possible fit', color: '#cc8a00' },
+  2: { label: 'Weak fit', color: '#868e96' },
+  1: { label: 'Poor fit', color: '#adb5bd' },
+};
+
+// Higher scores first; unscored postings after scored ones, since nothing is known
+// about them either way.
+const byFit = (a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0);
+
+const FIT_FIELDS = [
+  'fit_score', 'fit_summary', 'fit_strengths', 'fit_gaps', 'fit_flags', 'fit_model', 'fit_scored_at',
+];
+
 // Within a day, postings are ordered by how much attention they deserve: companies we
 // have applied to before come first whatever their apply type, then fresh external
 // applications, then easy-apply postings. Inside the applied-before tier the easy-apply
-// postings sink to the bottom, so the ones worth a real application read first.
+// postings sink to the bottom, so the ones worth a real application read first. Fit
+// orders postings within each tier.
 const isEasyApply = (job) => job.apply_type === 'easy_apply';
 
 const TIERS = [
@@ -29,10 +50,10 @@ const TIERS = [
     key: 'applied_before',
     label: 'Applied here before',
     match: (job) => job.applied_before,
-    sortWithin: (a, b) => isEasyApply(a) - isEasyApply(b),
+    sortWithin: (a, b) => isEasyApply(a) - isEasyApply(b) || byFit(a, b),
   },
-  { key: 'new', label: 'New application', match: (job) => !isEasyApply(job) },
-  { key: 'easy_apply', label: 'Easy apply', match: () => true },
+  { key: 'new', label: 'New application', match: (job) => !isEasyApply(job), sortWithin: byFit },
+  { key: 'easy_apply', label: 'Easy apply', match: () => true, sortWithin: byFit },
 ];
 
 // The board whose copy of a merged posting the title links to, best first. Every
@@ -73,6 +94,10 @@ function mergeDuplicates(jobs) {
     if (new Date(job.discovered_at) < new Date(group.discovered_at)) {
       group.discovered_at = job.discovered_at;
     }
+    // Each board's copy is scored separately; show the most favourable assessment.
+    if ((job.fit_score ?? 0) > (group.fit_score ?? 0)) {
+      for (const field of FIT_FIELDS) group[field] = job[field];
+    }
   }
   // Show and link the preferred board's copy; its pill comes first too.
   for (const group of groups.values()) {
@@ -106,9 +131,9 @@ function tierIndex(job) {
 // Group by the day a posting was first seen, newest day first, then into tiers within
 // the day. mergeDuplicates returns postings in discovered_at DESC order, so insertion
 // order gives us both the day grouping and the ordering inside each tier for free.
-function groupByDay(jobs) {
+function groupByDay(groups) {
   const days = new Map();
-  for (const job of mergeDuplicates(jobs)) {
+  for (const job of groups) {
     const day = (job.discovered_at || '').slice(0, 10);
     if (!days.has(day)) days.set(day, TIERS.map(() => []));
     days.get(day)[tierIndex(job)].push(job);
@@ -119,7 +144,7 @@ function groupByDay(jobs) {
     count: buckets.reduce((total, bucket) => total + bucket.length, 0),
     tiers: TIERS.map((tier, i) => ({
       ...tier,
-      // Array#sort is stable, so discovered_at DESC still holds within each half.
+      // Array#sort is stable, so discovered_at DESC still breaks ties.
       jobs: tier.sortWithin ? buckets[i].sort(tier.sortWithin) : buckets[i],
     })).filter((tier) => tier.jobs.length > 0),
   }));
@@ -161,7 +186,30 @@ function formatAppliedDate(timestamp) {
   return `${formatted} (${ago})`;
 }
 
-export default function DiscoveredList({ jobs, onDismiss, loading }) {
+// The model's reasoning behind a score, folded away so the list stays scannable.
+function FitDetails({ job }) {
+  const sections = [
+    { label: 'Strengths', items: job.fit_strengths },
+    { label: 'Gaps', items: job.fit_gaps },
+  ].filter((section) => section.items?.length);
+  if (!sections.length) return null;
+
+  return (
+    <details style={styles.fitDetails}>
+      <summary style={styles.fitDetailsToggle}>Why this score</summary>
+      {sections.map((section) => (
+        <div key={section.label} style={styles.fitSection}>
+          <span style={styles.fitSectionLabel}>{section.label}</span>
+          <ul style={styles.fitList}>
+            {section.items.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ))}
+    </details>
+  );
+}
+
+export default function DiscoveredList({ jobs, onDismiss, loading, hideLowFit = false }) {
   if (loading) {
     return <div style={styles.empty}>Loading...</div>;
   }
@@ -174,9 +222,20 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
     );
   }
 
+  const groups = mergeDuplicates(jobs);
+  const visible = hideLowFit ? groups.filter((job) => !isLowFit(job)) : groups;
+
+  if (!visible.length) {
+    return (
+      <div style={styles.empty}>
+        Every posting from the last 7 days is a low fit. Untick &ldquo;Hide low fits&rdquo; to see them.
+      </div>
+    );
+  }
+
   return (
     <div>
-      {groupByDay(jobs).map(({ day, count, tiers }) => (
+      {groupByDay(visible).map(({ day, count, tiers }) => (
         <section key={day} style={styles.daySection}>
           <h3 style={styles.dayHeading}>
             {formatDay(day)}
@@ -192,6 +251,7 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
 
               {tier.jobs.map((job) => {
                 const badge = APPLY_BADGES[job.apply_type] || APPLY_BADGES.unknown;
+                const fit = FIT_BADGES[job.fit_score];
                 return (
                   <div key={job.id} style={styles.row}>
                     <div style={styles.rowMain}>
@@ -207,9 +267,30 @@ export default function DiscoveredList({ jobs, onDismiss, loading }) {
                         {job.company_name}
                         {job.location ? ` · ${job.location}` : ''}
                       </div>
+                      {fit && (
+                        <div style={styles.fitBlock}>
+                          {job.fit_summary && <div style={styles.fitSummary}>{job.fit_summary}</div>}
+                          {job.fit_flags?.length > 0 && (
+                            <div style={styles.fitFlags}>
+                              {job.fit_flags.map((flag) => (
+                                <span key={flag} style={styles.fitFlag}>⚠ {flag}</span>
+                              ))}
+                            </div>
+                          )}
+                          <FitDetails job={job} />
+                        </div>
+                      )}
                     </div>
 
                     <div style={styles.badges}>
+                      {fit && (
+                        <span
+                          style={{ ...styles.badge, backgroundColor: fit.color }}
+                          title={job.fit_model ? `Scored by ${job.fit_model}` : undefined}
+                        >
+                          {fit.label} · {job.fit_score}/5
+                        </span>
+                      )}
                       {boardLinks(job.postings).map((posting) => {
                         const source = sourceBadge(posting.source);
                         return (
@@ -364,6 +445,49 @@ const styles = {
     padding: '3px 12px',
     fontSize: '12px',
     textDecoration: 'none',
+  },
+  fitBlock: {
+    marginTop: '6px',
+  },
+  fitSummary: {
+    color: '#495057',
+    fontSize: '13px',
+    lineHeight: 1.4,
+  },
+  fitFlags: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+    marginTop: '4px',
+  },
+  fitFlag: {
+    backgroundColor: '#f8d7da',
+    color: '#842029',
+    borderRadius: '10px',
+    padding: '2px 10px',
+    fontSize: '12px',
+  },
+  fitDetails: {
+    marginTop: '4px',
+    fontSize: '13px',
+    color: '#495057',
+  },
+  fitDetailsToggle: {
+    cursor: 'pointer',
+    color: '#6c757d',
+    fontSize: '12px',
+  },
+  fitSection: {
+    marginTop: '4px',
+  },
+  fitSectionLabel: {
+    fontWeight: 600,
+    fontSize: '12px',
+    color: '#495057',
+  },
+  fitList: {
+    margin: '2px 0 0 0',
+    paddingLeft: '20px',
   },
   dismissBtn: {
     border: '1px solid #dee2e6',

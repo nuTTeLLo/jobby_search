@@ -32,6 +32,10 @@ saving.
 
    Anything that cannot be determined is `unknown`. This runs only for postings that
    survived step 2, which keeps the per-posting requests to LinkedIn and Seek small.
+   The same requests return each posting's description (Indeed's is in the search
+   result), which is sent with the posting. The tracker keeps it for the **fit
+   sweep**, which scores each posting against your profile at 09:30 on the Mac
+   (`scripts/fitsweep/`); nothing here talks to Claude.
 4. POSTs the batch to `POST /api/discovered-jobs` with a short-lived HS256 token minted
    from `JWT_SECRET`, including `apply_url` — the employer's own application page,
    which only Indeed exposes without signing in.

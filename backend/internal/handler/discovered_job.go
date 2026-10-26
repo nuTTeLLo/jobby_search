@@ -26,6 +26,8 @@ func (h *DiscoveredJobHandler) Routes() http.Handler {
 
 	r.Get("/", h.ListDiscoveredJobs)
 	r.Post("/", h.IngestDiscoveredJobs)
+	r.Get("/unscored", h.ListUnscored)
+	r.Put("/{id}/fit", h.SetFit)
 	r.Patch("/{id}/dismiss", h.DismissDiscoveredJob)
 
 	return r
@@ -98,4 +100,48 @@ func (h *DiscoveredJobHandler) DismissDiscoveredJob(w http.ResponseWriter, r *ht
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response.Success(job))
+}
+
+// ListUnscored is the fit sweep's work list.
+func (h *DiscoveredJobHandler) ListUnscored(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+
+	jobs, err := h.service.Unscored(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response.Error(err.Error()))
+		return
+	}
+	json.NewEncoder(w).Encode(response.Success(jobs))
+}
+
+// SetFit stores the fit sweep's assessment of one posting.
+func (h *DiscoveredJobHandler) SetFit(w http.ResponseWriter, r *http.Request) {
+	userID := appMiddleware.UserIDFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	w.Header().Set("Content-Type", "application/json")
+
+	var input domain.Fit
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response.Error("Invalid request body"))
+		return
+	}
+
+	if err := h.service.SetFit(userID, id, &input); err != nil {
+		switch err {
+		case appErrors.ErrInvalidInput:
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response.Error("Fit score must be 1 to 5"))
+		case appErrors.ErrNotFound:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(response.Error("Discovered job not found"))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(response.Error(err.Error()))
+		}
+		return
+	}
+	json.NewEncoder(w).Encode(response.Success(nil))
 }

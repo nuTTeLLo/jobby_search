@@ -12,6 +12,9 @@ tmp
 # dev port offset of a secondary jj workspace (scripts/dev-workspace.sh)
 .dev-port-offset
 
+# go build output
+backend/job-tracker-backend
+
 # daily-scrape
 daily-scrape/__pycache__/
 

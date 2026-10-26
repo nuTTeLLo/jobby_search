@@ -32,6 +32,12 @@ type Config struct {
 	FrontendURL string
 	// AllowedEmails are the only accounts that may sign in.
 	AllowedEmails []string
+
+	// Fit checks run the Claude Code CLI, which authenticates from
+	// CLAUDE_CODE_OAUTH_TOKEN (a subscription token from `claude setup-token`).
+	FitClaudeBin string
+	FitModel     string
+	FitEffort    string
 }
 
 func Load() *Config {
@@ -55,6 +61,11 @@ func Load() *Config {
 		PublicBaseURL:      getEnv("PUBLIC_BASE_URL", "http://localhost:8080"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
 		AllowedEmails:      strings.Split(getEnv("ALLOWED_EMAILS", ""), ","),
+
+		FitClaudeBin: getEnv("FIT_CLAUDE_BIN", "claude"),
+		FitModel:     getEnv("FIT_MODEL", "claude-opus-5-5"),
+		// A short judgement call on one posting; low effort keeps it quick.
+		FitEffort: getEnv("FIT_EFFORT", "low"),
 	}
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"job-tracker-backend/internal/domain"
 )
@@ -38,5 +39,47 @@ func TestMatchKey(t *testing.T) {
 		if ka, kb := key(tc.a[0], tc.a[1]), key(tc.b[0], tc.b[1]); ka == kb {
 			t.Errorf("%v and %v should not match, both %q", tc.a, tc.b, ka)
 		}
+	}
+}
+
+func TestNewFitAssessment(t *testing.T) {
+	scoredAt := time.Now()
+
+	for _, score := range []int{0, 6, -1} {
+		if fit := newFitAssessment(&domain.Fit{Score: score}, scoredAt); fit != nil {
+			t.Errorf("score %d should be dropped, got %+v", score, fit)
+		}
+	}
+	if fit := newFitAssessment(nil, scoredAt); fit != nil {
+		t.Errorf("nil input should give no assessment, got %+v", fit)
+	}
+
+	fit := newFitAssessment(&domain.Fit{
+		Score:     4,
+		Summary:   "  Good stack match.  ",
+		Strengths: []string{"Go", " ", "Postgres "},
+		Flags:     nil,
+		Model:     "claude-haiku-5-5",
+	}, scoredAt)
+	if fit == nil {
+		t.Fatal("score 4 should be kept")
+	}
+
+	var job domain.DiscoveredJob
+	fit.applyTo(&job)
+	if job.FitScore == nil || *job.FitScore != 4 || job.FitSummary != "Good stack match." {
+		t.Errorf("unexpected applied fit: score=%v summary=%q", job.FitScore, job.FitSummary)
+	}
+	if len(job.FitStrengths) != 2 || job.FitStrengths[1] != "Postgres" {
+		t.Errorf("strengths should be trimmed with blanks dropped, got %q", job.FitStrengths)
+	}
+	if job.FitFlags == nil || len(job.FitFlags) != 0 {
+		t.Errorf("missing flags should be an empty list, got %#v", job.FitFlags)
+	}
+
+	fields := map[string]interface{}{}
+	fit.addColumns(fields)
+	if fields["fit_score"] != 4 || fields["fit_scored_at"] != scoredAt {
+		t.Errorf("unexpected update columns: %v", fields)
 	}
 }

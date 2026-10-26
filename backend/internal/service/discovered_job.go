@@ -12,11 +12,12 @@ import (
 )
 
 type DiscoveredJobService struct {
-	repo *repository.DiscoveredJobRepository
+	repo     *repository.DiscoveredJobRepository
+	profiles *repository.ProfileRepository
 }
 
-func NewDiscoveredJobService(repo *repository.DiscoveredJobRepository) *DiscoveredJobService {
-	return &DiscoveredJobService{repo: repo}
+func NewDiscoveredJobService(repo *repository.DiscoveredJobRepository, profiles *repository.ProfileRepository) *DiscoveredJobService {
+	return &DiscoveredJobService{repo: repo, profiles: profiles}
 }
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]`)
@@ -61,6 +62,66 @@ func matchKey(job *domain.DiscoveredJob) string {
 	return company + "|" + title
 }
 
+// fitAssessment is a validated fit from the scraper, ready to store.
+type fitAssessment struct {
+	score     int
+	summary   string
+	strengths domain.StringList
+	gaps      domain.StringList
+	flags     domain.StringList
+	model     string
+	scoredAt  time.Time
+}
+
+// newFitAssessment validates a scraper's fit, returning nil when there is nothing
+// to store. An out-of-range score is dropped rather than failing the ingest: the
+// posting itself is still worth keeping.
+func newFitAssessment(in *domain.Fit, scoredAt time.Time) *fitAssessment {
+	if in == nil || in.Score < domain.MinFitScore || in.Score > domain.MaxFitScore {
+		return nil
+	}
+	return &fitAssessment{
+		score:     in.Score,
+		summary:   strings.TrimSpace(in.Summary),
+		strengths: cleanList(in.Strengths),
+		gaps:      cleanList(in.Gaps),
+		flags:     cleanList(in.Flags),
+		model:     in.Model,
+		scoredAt:  scoredAt,
+	}
+}
+
+func (f *fitAssessment) applyTo(job *domain.DiscoveredJob) {
+	score, scoredAt := f.score, f.scoredAt
+	job.FitScore = &score
+	job.FitSummary = f.summary
+	job.FitStrengths = f.strengths
+	job.FitGaps = f.gaps
+	job.FitFlags = f.flags
+	job.FitModel = f.model
+	job.FitScoredAt = &scoredAt
+}
+
+func (f *fitAssessment) addColumns(fields map[string]interface{}) {
+	fields["fit_score"] = f.score
+	fields["fit_summary"] = f.summary
+	fields["fit_strengths"] = f.strengths
+	fields["fit_gaps"] = f.gaps
+	fields["fit_flags"] = f.flags
+	fields["fit_model"] = f.model
+	fields["fit_scored_at"] = f.scoredAt
+}
+
+func cleanList(items []string) domain.StringList {
+	cleaned := domain.StringList{}
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			cleaned = append(cleaned, item)
+		}
+	}
+	return cleaned
+}
+
 func (s *DiscoveredJobService) retentionCutoff() time.Time {
 	return time.Now().AddDate(0, 0, -domain.DiscoveredRetentionDays)
 }
@@ -91,6 +152,46 @@ func (s *DiscoveredJobService) GetRecent(userID string, includeDismissed bool) (
 		}
 	}
 	return jobs, nil
+}
+
+// Unscored lists the postings the fit sweep should score: never scored, or scored
+// before the fit profile was last saved.
+func (s *DiscoveredJobService) Unscored(userID string) ([]domain.UnscoredDiscoveredJob, error) {
+	profile, err := s.profiles.Get(userID)
+	if err != nil {
+		return nil, fmt.Errorf("load profile: %w", err)
+	}
+	jobs, err := s.repo.FindUnscored(userID, s.retentionCutoff(), profile.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	unscored := make([]domain.UnscoredDiscoveredJob, 0, len(jobs))
+	for i := range jobs {
+		job := &jobs[i]
+		unscored = append(unscored, domain.UnscoredDiscoveredJob{
+			ID:          job.ID,
+			MatchKey:    matchKey(job),
+			JobTitle:    job.JobTitle,
+			CompanyName: job.CompanyName,
+			Location:    job.Location,
+			Source:      job.Source,
+			JobURL:      job.JobURL,
+			Description: job.Description,
+		})
+	}
+	return unscored, nil
+}
+
+// SetFit stores a fit for one posting, as scored by the fit sweep.
+func (s *DiscoveredJobService) SetFit(userID, id string, in *domain.Fit) error {
+	fit := newFitAssessment(in, time.Now())
+	if fit == nil {
+		return appErrors.ErrInvalidInput
+	}
+	fields := map[string]interface{}{}
+	fit.addColumns(fields)
+	return s.repo.UpdateFieldsForUser(id, userID, fields)
 }
 
 func (s *DiscoveredJobService) Dismiss(userID, id string) (*domain.DiscoveredJob, error) {
@@ -149,10 +250,12 @@ func (s *DiscoveredJobService) Ingest(userID string, input *domain.DiscoveredIng
 		}
 		appliedBefore := applied[normalizeCompany(in.CompanyName)]
 
+		fit := newFitAssessment(in.Fit, now)
+
 		if prev, ok := existing[in.ExternalID]; ok {
 			// Keep the original DiscoveredAt so a posting stays under the day it was
 			// first seen, and never resurrect a dismissed row.
-			if err := s.repo.UpdateFields(prev.ID, map[string]interface{}{
+			fields := map[string]interface{}{
 				"job_title":      in.JobTitle,
 				"company_name":   in.CompanyName,
 				"location":       in.Location,
@@ -162,7 +265,16 @@ func (s *DiscoveredJobService) Ingest(userID string, input *domain.DiscoveredIng
 				"posted_date":    in.PostedDate,
 				"apply_type":     applyType,
 				"applied_before": appliedBefore,
-			}); err != nil {
+			}
+			// An unscored re-scrape keeps the existing assessment, and a missing
+			// description keeps the stored one.
+			if fit != nil {
+				fit.addColumns(fields)
+			}
+			if in.Description != "" {
+				fields["description"] = in.Description
+			}
+			if err := s.repo.UpdateFields(prev.ID, fields); err != nil {
 				return nil, err
 			}
 			result.Updated++
@@ -181,7 +293,11 @@ func (s *DiscoveredJobService) Ingest(userID string, input *domain.DiscoveredIng
 			PostedDate:    in.PostedDate,
 			ApplyType:     applyType,
 			AppliedBefore: appliedBefore,
+			Description:   in.Description,
 			DiscoveredAt:  now,
+		}
+		if fit != nil {
+			fit.applyTo(job)
 		}
 		if err := s.repo.Create(job); err != nil {
 			return nil, err

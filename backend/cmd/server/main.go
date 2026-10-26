@@ -5,6 +5,7 @@ import (
 	"job-tracker-backend/internal/auth"
 	"job-tracker-backend/internal/config"
 	"job-tracker-backend/internal/domain"
+	"job-tracker-backend/internal/fit"
 	"job-tracker-backend/internal/handler"
 	appMiddleware "job-tracker-backend/internal/middleware"
 	"job-tracker-backend/internal/repository"
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	// Migrate with user_id nullable first to allow backfill
-	if err := db.AutoMigrate(&domain.User{}, &domain.Job{}, &domain.Attachment{}, &domain.DiscoveredJob{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Job{}, &domain.Attachment{}, &domain.DiscoveredJob{}, &domain.Profile{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
@@ -64,17 +65,22 @@ func main() {
 	jobRepo := repository.NewJobRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	discoveredRepo := repository.NewDiscoveredJobRepository(db)
+	profileRepo := repository.NewProfileRepository(db)
 	jobService := service.NewJobService(jobRepo, cfg.MCPServerURL)
 	providers := auth.NewProviders(cfg.PublicBaseURL, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GitHubClientID, cfg.GitHubClientSecret)
 	if len(providers) == 0 {
 		log.Print("Warning: no OAuth provider configured (GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID); nobody can sign in")
 	}
 	authService := service.NewAuthService(userRepo, providers, cfg.AllowedEmails, cfg.JWTSecret, cfg.JWTExpiration)
-	discoveredService := service.NewDiscoveredJobService(discoveredRepo)
+	discoveredService := service.NewDiscoveredJobService(discoveredRepo, profileRepo)
+	profileService := service.NewProfileService(profileRepo)
+	fitService := service.NewFitService(profileRepo, fit.NewFetcher(), fit.NewScorer(cfg.FitClaudeBin, cfg.FitModel, cfg.FitEffort))
 	jobHandler := handler.NewJobHandler(jobService, cfg.JWTSecret)
 	attachmentHandler := handler.NewAttachmentHandler(jobService, cfg.JWTSecret)
 	authHandler := handler.NewAuthHandler(authService, cfg.FrontendURL, strings.HasPrefix(cfg.PublicBaseURL, "https://"))
 	discoveredHandler := handler.NewDiscoveredJobHandler(discoveredService)
+	profileHandler := handler.NewProfileHandler(profileService)
+	fitHandler := handler.NewFitHandler(fitService)
 
 	authMW := appMiddleware.Authenticate(cfg.JWTSecret)
 
@@ -109,6 +115,8 @@ func main() {
 		r.Mount("/api/jobs", jobHandler.Routes())
 		r.Mount("/api/jobs/{id}/attachments", attachmentHandler.Routes())
 		r.Mount("/api/discovered-jobs", discoveredHandler.Routes())
+		r.Mount("/api/profile", profileHandler.Routes())
+		r.Post("/api/fit-check", fitHandler.CheckFit)
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.ServerPort)

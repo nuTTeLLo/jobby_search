@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DiscoveredPage from './pages/DiscoveredPage';
 import ArchivedPage from './pages/ArchivedPage';
+import ProfilePage from './pages/ProfilePage';
 import JobTrackerApp from './JobTrackerApp';
 
 function App() {
@@ -24,6 +25,14 @@ function App() {
         element={
           <ProtectedRoute>
             <ArchivedPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         }
       />

@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,15 +38,31 @@ type DiscoveredJob struct {
 	JobURL      string `json:"job_url" gorm:"type:varchar(2000)"`
 	// ApplyURL is the employer's own application page, when the board exposes it
 	// publicly (Indeed does; LinkedIn and Seek only show it after sign-in).
-	ApplyURL      string    `json:"apply_url" gorm:"type:varchar(2000)"`
+	ApplyURL string `json:"apply_url" gorm:"type:varchar(2000)"`
+	// Description is the posting's text as scraped, kept so the fit sweep can score
+	// it later. Left out of the list response, which would otherwise carry several
+	// kilobytes per row that the page never shows.
+	Description   string    `json:"-" gorm:"type:text"`
 	Source        string    `json:"source" gorm:"type:varchar(100)"`
 	PostedDate    string    `json:"posted_date" gorm:"type:varchar(20)"`
 	ApplyType     string    `json:"apply_type" gorm:"type:varchar(20);default:'unknown'"`
 	AppliedBefore bool      `json:"applied_before" gorm:"default:false"`
 	Dismissed     bool      `json:"dismissed" gorm:"default:false;index"`
 	DiscoveredAt  time.Time `json:"discovered_at" gorm:"index"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+
+	// Fit is the daily scrape's assessment of the posting against the user's fit
+	// profile. All nil/empty until a scrape has scored it, and left alone by later
+	// ingests that do not score it again.
+	FitScore     *int       `json:"fit_score"`
+	FitSummary   string     `json:"fit_summary" gorm:"type:text"`
+	FitStrengths StringList `json:"fit_strengths" gorm:"type:text"`
+	FitGaps      StringList `json:"fit_gaps" gorm:"type:text"`
+	FitFlags     StringList `json:"fit_flags" gorm:"type:text"`
+	FitModel     string     `json:"fit_model" gorm:"type:varchar(100)"`
+	FitScoredAt  *time.Time `json:"fit_scored_at"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// MatchKey is shared by postings that look like the same role on different
 	// boards. Computed on read rather than stored, so the matching rule can change
@@ -78,6 +97,57 @@ type DiscoveredJobInput struct {
 	Source      string `json:"source"`
 	PostedDate  string `json:"posted_date"`
 	ApplyType   string `json:"apply_type"`
+	Description string `json:"description"`
+	// Fit is optional: a scrape that did not (or could not) score the posting omits
+	// it, and the stored assessment is kept.
+	Fit *Fit `json:"fit"`
+}
+
+// StringList stores a list of strings as a JSON array in a text column.
+type StringList []string
+
+func (l StringList) Value() (driver.Value, error) {
+	if l == nil {
+		return "[]", nil
+	}
+	encoded, err := json.Marshal([]string(l))
+	if err != nil {
+		return nil, err
+	}
+	return string(encoded), nil
+}
+
+func (l *StringList) Scan(value interface{}) error {
+	var raw []byte
+	switch v := value.(type) {
+	case nil:
+		*l = StringList{}
+		return nil
+	case string:
+		raw = []byte(v)
+	case []byte:
+		raw = v
+	default:
+		return fmt.Errorf("scan StringList: unsupported type %T", value)
+	}
+	if len(raw) == 0 {
+		*l = StringList{}
+		return nil
+	}
+	return json.Unmarshal(raw, (*[]string)(l))
+}
+
+// UnscoredDiscoveredJob is a posting waiting for the fit sweep, with what it needs to
+// score it. Postings sharing a match_key are the same role, so one score serves all.
+type UnscoredDiscoveredJob struct {
+	ID          string `json:"id"`
+	MatchKey    string `json:"match_key"`
+	JobTitle    string `json:"job_title"`
+	CompanyName string `json:"company_name"`
+	Location    string `json:"location"`
+	Source      string `json:"source"`
+	JobURL      string `json:"job_url"`
+	Description string `json:"description"`
 }
 
 // DiscoveredIngestInput is a whole scrape run's worth of postings.

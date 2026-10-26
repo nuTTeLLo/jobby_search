@@ -86,9 +86,28 @@ page (`/discovered`). It runs as the k3s CronJob `board-scrape` at 09:00 Austral
 `raspi` repo, `k8s-services/job-tracker/09-cronjob-board-scrape.yaml`); the image is
 built by the same `docker.yml` matrix as the other services, as
 `ghcr.io/nuttello/job-tracker-scraper`. It sends a Telegram summary of each run (optional; bot token and chat id are fields on the "Job Tracker (prod)" 1Password item, synced into `job-tracker-secret`). It holds no local state — the API upserts on
-`(user_id, external_id)` and prunes to a rolling 7-day window. The same role on several
+`(user_id, external_id)` and prunes to a rolling 7-day window. Each posting's description
+is stored (not returned by the list endpoint) for the fit sweep below. The same role on several
 boards is grouped on read by normalised company + title (`match_key`). See
 `daily-scrape/README.md`.
+
+### Fit sweep (Mac)
+
+Each discovered posting gets a 1–5 fit score, summary, strengths, gaps and flags,
+judged against the free-text fit profile on the frontend's **Profile** page
+(`/profile`, `GET/PUT /api/profile`). Scoring runs the Claude Code CLI (`claude -p`)
+on the user's Claude subscription, **on the user's Mac**, not in the cluster: one
+run peaks around 300 MB, against the backend pod's 96Mi limit on a node near its
+memory ceiling. `backend/cmd/fitsweep` runs from the launchd agent
+`com.jobbysearch.fitsweep` at 09:30, after the board scrape. It takes
+`GET /api/discovered-jobs/unscored`, scores each role once, stores the scores with
+`PUT /api/discovered-jobs/:id/fit`, and sends a Telegram "top fits" message. See
+`scripts/fitsweep/README.md`.
+
+The scorer lives in `backend/internal/fit/`, so it can move into the cluster once the
+hardware allows. `POST /api/fit-check` (score one posting by `url` and/or fields)
+already uses it. It works under `mise run dev`, where `claude` is on PATH, and answers
+503 in prod, whose image has no Claude Code.
 
 ### Backend Structure (Go)
 
@@ -155,6 +174,11 @@ Supports SSE and Stdio transports. SSE enabled by default (`ENABLE_SSE=1`).
 | GET | `/api/discovered-jobs` | List scraped postings, last 7 days, with a cross-board `match_key` (`?include_dismissed=true`) |
 | POST | `/api/discovered-jobs` | Batch ingest from a scraper (upserts, then prunes) |
 | PATCH | `/api/discovered-jobs/:id/dismiss` | Hide a discovered posting |
+| GET | `/api/discovered-jobs/unscored` | Postings due a fit score, with descriptions (for the fit sweep) |
+| PUT | `/api/discovered-jobs/:id/fit` | Store a fit (`{score, summary, strengths, gaps, flags, model}`) |
+| GET | `/api/profile` | The user's fit profile (`{fit_profile, updated_at}`) |
+| PUT | `/api/profile` | Save the fit profile (at most 20,000 characters) |
+| POST | `/api/fit-check` | Score one posting against the fit profile (local dev only for now; see Fit sweep) |
 | GET | `/api/auth/{google,github}/start` | Begin OAuth sign-in (browser navigation, not XHR) |
 | GET | `/api/auth/{google,github}/callback` | Provider redirects here; redirects on to `FRONTEND_URL/auth/callback#token=<jwt>` |
 | GET | `/api/auth/me` | Current user (`{id, email}`) |
