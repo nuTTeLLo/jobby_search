@@ -55,7 +55,7 @@ DISPATCH_COOLDOWN_SEC = 10
 SOURCE_BY_HOST = (
     ("linkedin.com", "L"),
     ("indeed.", "I"),
-    ("seek.com.au", "S"),
+    ("seek.com", "S"),  # www.seek.com.au and au.seek.com
     ("glassdoor.", "G"),
 )
 VALID_SOURCES = set("LISGMO")
