@@ -3,11 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Top-level navigation. These pages are different jobs of work, not filters of one
 // list: the tracker is what you act on, Discovered is the read-only feed from the
-// daily scrape, and Archived holds applications the weekly sweep has retired.
+// daily scrape, Archived holds applications the weekly sweep has retired, and
+// Profile is what the scrape scores each discovered posting against.
 const PAGES = [
   { to: '/', label: 'Tracker', end: true },
   { to: '/discovered', label: 'Discovered' },
   { to: '/archived', label: 'Archived' },
+  { to: '/profile', label: 'Profile' },
 ];
 
 export default function AppHeader() {

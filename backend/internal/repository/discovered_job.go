@@ -34,6 +34,36 @@ func (r *DiscoveredJobRepository) GetRecent(userID string, includeDismissed bool
 	return jobs, nil
 }
 
+// FindUnscored returns the retained, undismissed postings that have no fit, or
+// whose fit predates profileSavedAt (nil when there is no saved profile).
+func (r *DiscoveredJobRepository) FindUnscored(userID string, since time.Time, profileSavedAt *time.Time) ([]domain.DiscoveredJob, error) {
+	query := r.db.Where("user_id = ? AND discovered_at >= ? AND dismissed = ?", userID, since, false)
+	if profileSavedAt != nil {
+		query = query.Where("fit_score IS NULL OR fit_scored_at < ?", *profileSavedAt)
+	} else {
+		query = query.Where("fit_score IS NULL")
+	}
+
+	var jobs []domain.DiscoveredJob
+	if err := query.Order("discovered_at DESC, company_name ASC").Find(&jobs).Error; err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+// UpdateFieldsForUser is UpdateFields scoped to one user's rows, for writes that
+// come straight from a request.
+func (r *DiscoveredJobRepository) UpdateFieldsForUser(id, userID string, fields map[string]interface{}) error {
+	result := r.db.Model(&domain.DiscoveredJob{}).Where("id = ? AND user_id = ?", id, userID).Updates(fields)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return appErrors.ErrNotFound
+	}
+	return nil
+}
+
 // FindByExternalIDs loads existing rows for this user keyed by external id, so an
 // ingest can tell a create from an update without a query per posting.
 func (r *DiscoveredJobRepository) FindByExternalIDs(userID string, externalIDs []string) (map[string]domain.DiscoveredJob, error) {

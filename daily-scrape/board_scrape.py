@@ -3,7 +3,8 @@
 
 Searches LinkedIn, Seek and Indeed with JobSpy for roles posted in the last 24 hours,
 filters to the role families being targeted, classifies each surviving posting as Easy
-Apply or external, and POSTs the batch to the job tracker.
+Apply or external, and POSTs the batch, with each posting's description, to the job
+tracker. Fit scoring happens later, outside the cluster (backend/cmd/fitsweep).
 
 JobSpy runs in this process rather than through the MCP server: on the cluster node,
 long searches inside the MCP pod stalled it until its liveness probe restarted it,
@@ -218,43 +219,61 @@ def search_board(cfg, site, term, remote, warnings):
     return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
 
 
-def linkedin_apply_type(job_id, warnings):
-    """Classify how a LinkedIn posting is applied to.
+def html_to_text(html):
+    """A board's HTML description as markdown, which reads well to the model."""
+    if not html:
+        return None
+    from jobspy.util import markdown_converter  # JobSpy's own HTML -> markdown
 
-    The guest posting page marks the apply button's destination: `apply-link-onsite`
-    for LinkedIn's own Easy Apply flow, `apply-link-offsite` when it hands off to an
-    external ATS. Some postings render neither, hence the unknown case.
+    return markdown_converter(html) or None
+
+
+def linkedin_details(job_id, warnings):
+    """Apply type and description of a LinkedIn posting, from its guest page.
+
+    The page marks the apply button's destination: `apply-link-onsite` for
+    LinkedIn's own Easy Apply flow, `apply-link-offsite` when it hands off to an
+    external ATS. Some postings render neither, hence the unknown case. The same page
+    carries the full description, which the fit sweep scores.
     """
     html = request_with_retry(
         "%s/%s" % (LINKEDIN_POSTING_URL, job_id),
-        "apply-type for linkedin %s" % job_id,
+        "details for linkedin %s" % job_id,
         warnings,
         headers={"Accept": "text/html,application/xhtml+xml"},
     )
     if html is None:
-        return APPLY_UNKNOWN
+        return APPLY_UNKNOWN, None
     if "apply-link-onsite" in html:
-        return APPLY_EASY
-    if "apply-link-offsite" in html:
-        return APPLY_EXTERNAL
-    return APPLY_UNKNOWN
+        apply_type = APPLY_EASY
+    elif "apply-link-offsite" in html:
+        apply_type = APPLY_EXTERNAL
+    else:
+        apply_type = APPLY_UNKNOWN
+
+    from bs4 import BeautifulSoup  # a JobSpy dependency
+
+    markup = BeautifulSoup(html, "html.parser").find(
+        "div", class_=lambda c: c and "show-more-less-html__markup" in c
+    )
+    return apply_type, html_to_text(str(markup)) if markup else None
 
 
-def seek_apply_type(job_id, warnings):
-    """Classify how a Seek posting is applied to.
+def seek_details(job_id, warnings):
+    """Apply type and description of a Seek posting.
 
     Seek's job details carry `isLinkOut`: true for the "Apply" button that leaves for
-    the employer's site, false for Seek's own Quick apply. The search results do not
-    include it, so it costs one small GraphQL call per posting.
+    the employer's site, false for Seek's own Quick apply. The search results include
+    neither that nor the description, so it costs one GraphQL call per posting.
     """
     body = request_with_retry(
         SEEK_GRAPHQL_URL,
-        "apply-type for seek %s" % job_id,
+        "details for seek %s" % job_id,
         warnings,
         data={
             "operationName": "jobDetails",
             "variables": {"jobId": job_id},
-            "query": "query jobDetails($jobId: ID!) { jobDetails(id: $jobId) { job { isLinkOut } } }",
+            "query": "query jobDetails($jobId: ID!) { jobDetails(id: $jobId) { job { isLinkOut content } } }",
         },
         headers={
             "Content-Type": "application/json",
@@ -264,12 +283,15 @@ def seek_apply_type(job_id, warnings):
         },
     )
     try:
-        is_link_out = json.loads(body)["data"]["jobDetails"]["job"]["isLinkOut"]
+        job = json.loads(body)["data"]["jobDetails"]["job"]
     except (TypeError, ValueError, KeyError):
-        return APPLY_UNKNOWN
+        return APPLY_UNKNOWN, None
+    is_link_out = job.get("isLinkOut")
     if is_link_out is None:
-        return APPLY_UNKNOWN
-    return APPLY_EXTERNAL if is_link_out else APPLY_EASY
+        apply_type = APPLY_UNKNOWN
+    else:
+        apply_type = APPLY_EXTERNAL if is_link_out else APPLY_EASY
+    return apply_type, html_to_text(job.get("content"))
 
 
 def board_id(site, jobspy_id):
@@ -278,15 +300,17 @@ def board_id(site, jobspy_id):
     return jobspy_id[len(prefix):] if jobspy_id.startswith(prefix) else jobspy_id
 
 
-def apply_type_for(site, posting_id, jobspy_apply_type, warnings):
+def posting_details(site, posting_id, result, warnings):
+    """(apply type, description) for one posting."""
     if site == "linkedin":
-        return linkedin_apply_type(posting_id, warnings)
+        return linkedin_details(posting_id, warnings)
     if site == "seek":
-        return seek_apply_type(posting_id, warnings)
-    # Indeed's search results already say (the fork's apply_type field).
-    if jobspy_apply_type in (APPLY_EASY, APPLY_EXTERNAL):
-        return jobspy_apply_type
-    return APPLY_UNKNOWN
+        return seek_details(posting_id, warnings)
+    # Indeed's search results already have both (apply_type is the fork's field).
+    apply_type = result.get("apply_type")
+    if apply_type not in (APPLY_EASY, APPLY_EXTERNAL):
+        apply_type = APPLY_UNKNOWN
+    return apply_type, result.get("description")
 
 
 # --------------------------------------------------------------------------- filter
@@ -583,10 +607,10 @@ def main():
             notify_failure(cfg, run_time, message)
         return 1
 
-    # 2. classify how each survivor is applied to
+    # 2. classify how each survivor is applied to, and collect its description
     jobs = []
     for (site, posting_id), result in candidates.items():
-        apply_type = apply_type_for(site, posting_id, result.get("apply_type"), warnings)
+        apply_type, description = posting_details(site, posting_id, result, warnings)
         jobs.append({
             "external_id": SITES[site]["external_prefix"] + posting_id,
             "job_title": result.get("title") or "",
@@ -597,6 +621,7 @@ def main():
             "source": site,
             "posted_date": str(result.get("date_posted") or "")[:10],
             "apply_type": apply_type,
+            "description": description or "",
         })
         if site != "indeed":
             time.sleep(random.uniform(1.5, 3.0))

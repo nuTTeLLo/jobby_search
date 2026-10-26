@@ -104,6 +104,18 @@ export const dismissDiscoveredJob = async (id) => {
   return response.data.data;
 };
 
+// Profile: per-user settings. fit_profile is the free text the daily scrape scores
+// each discovered posting against.
+export const getProfile = async () => {
+  const response = await api.get('/api/profile');
+  return response.data.data;
+};
+
+export const updateProfile = async (profile) => {
+  const response = await api.put('/api/profile', profile);
+  return response.data.data;
+};
+
 export const searchJobs = async (searchParams) => {
   const response = await api.post('/api/jobs/search', searchParams);
   return response.data.data;
