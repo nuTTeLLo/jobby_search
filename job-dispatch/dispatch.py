@@ -12,6 +12,7 @@ profile, so nix/mise interpreters are not reachable from there.
 """
 
 import argparse
+import getpass
 import json
 import os
 import re
@@ -22,7 +23,7 @@ from urllib.parse import urlparse
 
 # Stable per-user profile symlink, NOT the resolved /nix/store path, which
 # changes on every herdr update.
-HERDR = "/etc/profiles/per-user/adrian/bin/herdr"
+HERDR = "/etc/profiles/per-user/%s/bin/herdr" % getpass.getuser()
 
 # Which multiplexer's sessions to dispatch into. tuios and herdr each run their
 # own Job-Apply-N sessions; tuios's herdr-compatible socket lives at a path
@@ -34,7 +35,7 @@ BACKEND_SOCKETS = {
 }
 DEFAULT_BACKEND = "tuios"
 
-JOB_SEARCH_DIR = "/Users/adrian/Remotes/OneDrive/My Job Search"
+JOB_SEARCH_DIR = os.path.expanduser("~/Remotes/OneDrive/My Job Search")
 PANE_TITLE_RE = re.compile(r"^Job-Apply-(\d+)$")
 # tuios sends only the raw title, which Claude prefixes with a status glyph.
 TITLE_GLYPHS_RE = re.compile(r"^[^\w]+")

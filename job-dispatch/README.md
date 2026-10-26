@@ -4,7 +4,7 @@ Send the job posting you're looking at straight into a free `Job-Apply-N` Claude
 session, from the macOS Share menu in any browser.
 
 Replaces copying the URL out of the browser and hand-typing the 4-line trigger
-message that the workflow in `/Users/adrian/Remotes/OneDrive/My Job Search/CLAUDE.md`
+message that the workflow in `~/Remotes/OneDrive/My Job Search/CLAUDE.md`
 expects:
 
 ```
@@ -54,7 +54,7 @@ looked at yet. The convention is that a session is done only once you've
 actioned the output and typed `/clear`, so freshness is checked separately:
 
 > A session is cleared if its transcript
-> (`~/.claude/projects/-Users-adrian-Remotes-OneDrive-My-Job-Search/<session>.jsonl`)
+> (`~/.claude/projects/-Users-<you>-Remotes-OneDrive-My-Job-Search/<session>.jsonl`)
 > contains no `assistant` entry after the last `/clear`.
 
 Count *assistant* turns, not user messages: a cleared transcript still holds
@@ -100,7 +100,7 @@ Two constraints worth preserving if you edit it:
 - **Stdlib only, `/usr/bin/python3` shebang.** Shortcuts' Run Shell Script runs in
   a sandbox with a minimal PATH that doesn't source your profile, so nix/mise
   interpreters aren't reachable from there.
-- **`herdr` is called at `/etc/profiles/per-user/adrian/bin/herdr`** for both
+- **`herdr` is called at `/etc/profiles/per-user/<you>/bin/herdr`** for both
   backends — the stable profile symlink, not the resolved
   `/nix/store/...-herdr-<ver>/bin/herdr`, which changes on every herdr update.
 
@@ -127,7 +127,7 @@ Shortcuts.app in about two minutes:
    arguments**), with the flags for that branch:
 
    ```
-   /usr/bin/python3 /Users/adrian/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" n n
+   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" n n
    ```
 
    `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
@@ -207,7 +207,7 @@ menu and point the menu's prompt at it:
    arguments**), with `Shortcut Input` as the variable:
 
    ```
-   /usr/bin/python3 /Users/adrian/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" --resolve-only
+   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" --resolve-only
    ```
 
    `--resolve-only` prints the URL that *would* be dispatched -- live tab
