@@ -20,6 +20,7 @@ path, plus PyJWT to mint the tracker token; see the Dockerfile.
 """
 
 import argparse
+import http.client
 import json
 import os
 import random
@@ -357,15 +358,22 @@ POST_RETRY_DELAYS = (30, 60, 120, 240)
 
 
 def post_jobs_with_retry(cfg, jobs):
-    """post_jobs, retried on connection errors, timeouts and 5xx responses."""
+    """post_jobs, retried on connection errors, timeouts, truncated responses and 5xx.
+
+    A retry may follow a POST that landed but whose response was lost, so the
+    tracker's created/updated split is then unreliable; the result says so with
+    "retried"."""
     for attempt, delay in enumerate(POST_RETRY_DELAYS + (None,), start=1):
         try:
-            return post_jobs(cfg, jobs)
+            result = post_jobs(cfg, jobs)
+            if attempt > 1:
+                result["retried"] = True
+            return result
         except urllib.error.HTTPError as exc:
             if exc.code < 500 or delay is None:
                 raise
             reason = "HTTP %d" % exc.code
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
             if delay is None:
                 raise
             reason = "%s: %s" % (type(exc).__name__, exc)
@@ -456,16 +464,21 @@ def format_telegram(jobs, result, warnings, run_time, discovered_url):
         if board not in role["sources"]:
             role["sources"].append(board)
 
-    lines = [
-        "🔎 Job Discovery — %s" % run_time.strftime("%-d %b"),
-        "",
-        "%d new, %d already listed (%d role%s)"
-        % (
+    plural = "" if len(roles) == 1 else "s"
+    if result.get("retried"):
+        # An earlier attempt may have stored some rows, so they count as updated.
+        counts = "%d posted, after a retry (%d role%s)" % (len(jobs), len(roles), plural)
+    else:
+        counts = "%d new, %d already listed (%d role%s)" % (
             result.get("created", 0),
             result.get("updated", 0),
             len(roles),
-            "" if len(roles) == 1 else "s",
-        ),
+            plural,
+        )
+    lines = [
+        "🔎 Job Discovery — %s" % run_time.strftime("%-d %b"),
+        "",
+        counts,
     ]
     if roles:
         lines.append("")
