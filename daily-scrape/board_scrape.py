@@ -350,6 +350,32 @@ def tracker_token(cfg):
     )
 
 
+# Waits before each re-POST. The cluster node sometimes stalls for a few minutes
+# (probes time out, the backend refuses connections), and a retry here is far cheaper
+# than the CronJob re-running a whole scrape. The ingest upserts, so a repeat is safe.
+POST_RETRY_DELAYS = (30, 60, 120, 240)
+
+
+def post_jobs_with_retry(cfg, jobs):
+    """post_jobs, retried on connection errors, timeouts and 5xx responses."""
+    for attempt, delay in enumerate(POST_RETRY_DELAYS + (None,), start=1):
+        try:
+            return post_jobs(cfg, jobs)
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500 or delay is None:
+                raise
+            reason = "HTTP %d" % exc.code
+        except (urllib.error.URLError, OSError) as exc:
+            if delay is None:
+                raise
+            reason = "%s: %s" % (type(exc).__name__, exc)
+        print(
+            "Tracker: POST attempt %d failed (%s); retrying in %ds." % (attempt, reason, delay),
+            file=sys.stderr,
+        )
+        time.sleep(delay)
+
+
 def post_jobs(cfg, jobs):
     """Send the batch to the tracker. Returns its ingest result."""
     payload = json.dumps({"jobs": jobs}).encode()
@@ -638,7 +664,7 @@ def main():
         return 0
 
     try:
-        result = post_jobs(cfg, jobs)
+        result = post_jobs_with_retry(cfg, jobs)
     except Exception as exc:  # noqa: BLE001 - any failure here must be loud
         message = "posting to tracker failed (%s: %s)" % (type(exc).__name__, exc)
         print("FATAL: " + message, file=sys.stderr)
