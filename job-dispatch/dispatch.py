@@ -3,8 +3,9 @@
 
 Invoked by the "Send to Job-Apply" Shortcut (macOS Share Sheet). Builds the
 4-line trigger message that the job-search workflow expects and submits it to a
-Job-Apply-N pane, in tuios (the default) or herdr. tuios answers herdr's
-command line on its own socket, so both are driven through the herdr CLI.
+Job-Apply-N pane, in tuios (the default), herdr or Rex. tuios answers herdr's
+command line on its own socket, so both are driven through the herdr CLI; Rex
+has no such socket and is driven through its own CLI.
 
 Stdlib only, and run with /usr/bin/python3 on purpose: Shortcuts' Run Shell
 Script executes in a sandbox with a minimal PATH that does not source the user's
@@ -19,7 +20,7 @@ import re
 import subprocess
 import sys
 import time
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # Stable per-user profile symlink, NOT the resolved /nix/store path, which
 # changes on every herdr update.
@@ -33,7 +34,21 @@ BACKEND_SOCKETS = {
     "tuios": "/tmp/tuios-%d/tuios.sock.herdr" % os.getuid(),
     "herdr": None,
 }
+BACKENDS = sorted(list(BACKEND_SOCKETS) + ["rex"])
 DEFAULT_BACKEND = "tuios"
+
+# Rex ships its CLI inside the app bundle and puts nothing on PATH. The Beta
+# app is what's installed today; the plain name is for when it drops the tag.
+REX_CANDIDATES = [
+    "/Applications/%s.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" % app
+    for app in ("Rex Beta", "Rex")
+]
+REX = next((p for p in REX_CANDIDATES if os.path.exists(p)), REX_CANDIDATES[0])
+# Claude only treats a multi-line message as one prompt if it arrives as a
+# paste; typed newlines would submit the URL line on its own.
+PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
+# Give Claude a moment to take the paste in before Enter submits it.
+PASTE_SETTLE_SEC = 0.3
 
 JOB_SEARCH_DIR = os.path.expanduser("~/Remotes/OneDrive/My Job Search")
 PANE_TITLE_RE = re.compile(r"^Job-Apply-(\d+)$")
@@ -335,30 +350,136 @@ def pane_title(agent):
     return TITLE_GLYPHS_RE.sub("", agent.get("terminal_title") or "").strip()
 
 
-def list_sessions(cwd, env):
+def herdr_agents(backend):
+    payload = run_herdr("agent", "list", env=backend_env(backend))
+    for agent in payload.get("result", {}).get("agents", []):
+        yield {
+            "pane_id": agent.get("pane_id"),
+            "title": pane_title(agent),
+            "cwd": agent.get("cwd"),
+            "status": agent.get("agent_status"),
+            "session_id": (agent.get("agent_session") or {}).get("value"),
+        }
+
+
+def run_rex(*args, parse=True):
+    # --autostart=false: a missing server should fail the dispatch, not start
+    # an empty one with no Job-Apply panes in it.
+    try:
+        proc = subprocess.run(
+            [REX, "--autostart=false", *args], capture_output=True, text=True, timeout=30
+        )
+    except FileNotFoundError:
+        raise DispatchError("rex not found at %s" % REX)
+    except subprocess.TimeoutExpired:
+        raise DispatchError("rex timed out running: %s" % " ".join(args[:3]))
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        raise DispatchError("rex %s failed: %s" % (args[0], detail[0] if detail else "?"))
+    if not parse:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except ValueError:
+        raise DispatchError("rex %s returned non-JSON output" % args[0])
+
+
+def rex_process_cwd(sid, bid):
+    """Working directory of a block's foreground program.
+
+    For a pane that runs claude with no shell around it, nothing sends OSC 7,
+    so Rex has no pwd to report.
+    """
+    pid = (run_rex("block", "call", "-s", sid, "-b", bid, "process").get("foreground") or {}).get("pid")
+    if not pid:
+        return None
+    try:
+        out = subprocess.run(
+            ["/usr/sbin/lsof", "-a", "-d", "cwd", "-p", str(pid), "-Fn"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return next((line[1:] for line in out.splitlines() if line.startswith("n")), None)
+
+
+def rex_agents():
+    """Rex terminal blocks, shaped like herdr's agent list.
+
+    Rex reports no Claude session id, so session_id is None and the newest
+    transcript carrying the pane's name decides (see current_session_id).
+    Title is read first so only Job-Apply panes pay for the other two calls.
+    """
+    for session in run_rex("ls", "--json").get("sessions", []):
+        sid = session["session_id"]
+        for block in run_rex("block", "ls", "-s", sid, "--json").get("blocks", []):
+            bid = block["block_id"]
+            if not block.get("flavor", "").startswith("com.superlogical.terminal"):
+                continue
+            title = run_rex("block", "call", "-s", sid, "-b", bid, "title").get("title") or ""
+            title = TITLE_GLYPHS_RE.sub("", title).strip()
+            if not PANE_TITLE_RE.match(title):
+                continue
+            # The shell's OSC 7 location: a file:// URL with the host in it.
+            pwd = run_rex("block", "call", "-s", sid, "-b", bid, "pwd").get("pwd") or ""
+            cwd = unquote(urlparse(pwd).path) or rex_process_cwd(sid, bid)
+            records = run_rex("block", "call", "-s", sid, "-b", bid, "program_status")
+            claude = next(
+                (r for r in records.get("records", []) if r.get("effective_app") == "claude-code"),
+                {},
+            )
+            yield {
+                "pane_id": bid,
+                "rex_session": sid,
+                "title": title,
+                "cwd": cwd,
+                "status": claude.get("state"),
+                "session_id": None,
+            }
+
+
+def list_sessions(cwd, backend):
     """Job-Apply-N agents in cwd, ordered by their numeric suffix."""
-    payload = run_herdr("agent", "list", env=env)
+    agents = rex_agents() if backend == "rex" else herdr_agents(backend)
     tdir = transcript_dir(cwd)
     latest = latest_named_sessions(tdir)
     found = []
-    for agent in payload.get("result", {}).get("agents", []):
-        if agent.get("cwd") != cwd:
+    for agent in agents:
+        if agent["cwd"] != cwd:
             continue
-        title = pane_title(agent)
+        title = agent["title"]
         match = PANE_TITLE_RE.match(title)
         if not match:
             continue
-        herdr_id = (agent.get("agent_session") or {}).get("value")
         found.append(
             {
                 "n": int(match.group(1)),
-                "pane_id": agent.get("pane_id"),
+                "pane_id": agent["pane_id"],
+                "rex_session": agent.get("rex_session"),
                 "title": title,
-                "status": agent.get("agent_status"),
-                "session_id": current_session_id(title, herdr_id, latest, tdir),
+                "status": agent["status"],
+                "session_id": current_session_id(title, agent["session_id"], latest, tdir),
+                # Claude writes a transcript only on the first message, and Rex
+                # reports no session id, so a Rex pane with no transcript under
+                # its name has never been used.
+                "unused": backend == "rex" and title not in latest,
             }
         )
     return sorted(found, key=lambda s: s["n"])
+
+
+def send_prompt(backend, session, message):
+    if backend != "rex":
+        run_herdr("agent", "prompt", session["pane_id"], message, env=backend_env(backend))
+        return
+    target = ["-s", session["rex_session"], "-b", session["pane_id"]]
+    run_rex("send", *target, PASTE_START + message + PASTE_END, parse=False)
+    time.sleep(PASTE_SETTLE_SEC)
+    run_rex("send-key", *target, "enter", parse=False)
+
+
+def is_fresh(session, tdir):
+    return session["unused"] or is_cleared(session["session_id"], tdir)
 
 
 def is_cleared(session_id, tdir):
@@ -433,7 +554,7 @@ def choose(sessions, tdir, state):
             reasons.append((session["title"], session["status"]))
         elif in_cooldown(session, state):
             reasons.append((session["title"], "just dispatched"))
-        elif not is_cleared(session["session_id"], tdir):
+        elif not is_fresh(session, tdir):
             reasons.append((session["title"], "needs /clear"))
         else:
             return session, reasons
@@ -456,7 +577,7 @@ def main():
     parser.add_argument("--cwd", default=JOB_SEARCH_DIR)
     parser.add_argument("--target", help="dispatch to this pane_id instead of the first free one")
     parser.add_argument(
-        "--backend", choices=sorted(BACKEND_SOCKETS),
+        "--backend", choices=BACKENDS,
         default=os.environ.get("JOB_DISPATCH_BACKEND") or DEFAULT_BACKEND,
         help="multiplexer whose Job-Apply sessions to use (default: $JOB_DISPATCH_BACKEND, else %s)"
         % DEFAULT_BACKEND,
@@ -480,9 +601,9 @@ def main():
     args = parser.parse_args()
     # argparse checks choices only for values given on the command line, not
     # for a default taken from the environment.
-    if args.backend not in BACKEND_SOCKETS:
+    if args.backend not in BACKENDS:
         parser.error("JOB_DISPATCH_BACKEND=%r is not one of: %s"
-                     % (args.backend, ", ".join(sorted(BACKEND_SOCKETS))))
+                     % (args.backend, ", ".join(BACKENDS)))
     log("invoked", argv=sys.argv[1:])
 
     raw = args.url
@@ -524,8 +645,7 @@ def main():
             "page. Re-share, or pass --force if this repeat is deliberate."
         )
 
-    env = backend_env(args.backend)
-    sessions = list_sessions(args.cwd, env)
+    sessions = list_sessions(args.cwd, args.backend)
     if not sessions:
         raise DispatchError("no %s Job-Apply sessions found in %s" % (args.backend, args.cwd))
 
@@ -539,7 +659,7 @@ def main():
         # An explicit target still gets tested, so it can't clobber unactioned work.
         if chosen["status"] not in FREE_STATUSES:
             raise DispatchError("%s is %s" % (chosen["title"], chosen["status"]))
-        if not is_cleared(chosen["session_id"], tdir):
+        if not is_fresh(chosen, tdir):
             raise DispatchError("%s needs /clear" % chosen["title"])
         reasons = []
     else:
@@ -557,7 +677,7 @@ def main():
         return
 
     log("dispatch", url=url, source=source, pane=chosen["pane_id"], backend=args.backend)
-    run_herdr("agent", "prompt", chosen["pane_id"], message, env=env)
+    send_prompt(args.backend, chosen, message)
     write_state(chosen["pane_id"], url)
     origin = "live" if live else "share sheet"
     flags = "".join([" recruiter" if args.recruiter == "y" else "",

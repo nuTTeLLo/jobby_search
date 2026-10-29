@@ -17,10 +17,10 @@ expects:
 ```
 File → Share (Brave / Safari / Zen)
    └─> Shortcut "Send to Job-Apply"
-         └─> dispatch.py  ──tuios | herdr──>  a free Job-Apply-N session
+         └─> dispatch.py  ──tuios | herdr | rex──>  a free Job-Apply-N session
 ```
 
-## tuios or herdr
+## tuios, herdr or Rex
 
 tuios and herdr each run their **own** `Job-Apply-N` sessions -- separate Claude
 processes with separate transcripts, even when the names match. tuios answers
@@ -31,6 +31,7 @@ herdr CLI; only the socket differs. Pick one with `--backend`:
 |---|---|---|
 | `tuios` (default) | `tuios list-agents` | `/tmp/tuios-<uid>/tuios.sock.herdr` |
 | `herdr` | `herdr agent list` | herdr's own server |
+| `rex` | `rex ls` / `rex block ls` | Rex's own server, through its CLI |
 
 `JOB_DISPATCH_BACKEND` sets the default when the flag is absent. The script
 always sets or clears `HERDR_SOCKET_PATH` itself: a tuios pane already exports
@@ -42,6 +43,28 @@ Two differences in what tuios reports are absorbed: it sends only
 `terminal_title`, which Claude prefixes with a status glyph (`✳ Job-Apply-3`),
 so leading glyphs are stripped; and it marks a session `done` after a turn where
 herdr says `idle`, so both count as free and the transcript check decides.
+
+### Rex
+
+Rex has no herdr-compatible socket, so it goes through its own CLI, which lives
+inside the app bundle (`/Applications/Rex Beta.app/Contents/Helpers/Rex
+Server.rex/Contents/MacOS/rex`, or the same path under `Rex.app`) and is not on
+PATH. For each terminal block the script reads `title`, then, for
+`Job-Apply-N` panes only, `pwd` (the shell's OSC 7 location; failing that, the
+foreground program's cwd via `lsof`) and `program_status`, whose `claude-code`
+record gives the same `idle` / `done` / `working` states as tuios. It runs with
+`--autostart=false`, so a stopped Rex fails the dispatch instead of starting an
+empty server.
+
+The message goes in as a bracketed paste followed by Enter: typed newlines
+would submit the URL line on its own.
+
+Rex reports no Claude session id, so the newest transcript named `Job-Apply-N`
+is the pane's transcript. Claude writes a transcript only on a session's first
+message, so a pane with no transcript under its name counts as unused and free.
+
+The cwd check still applies: start Rex's Job-Apply panes in
+`~/Remotes/OneDrive/My Job Search`, or `--cwd` must name where they run.
 
 ## How a session is chosen
 
@@ -84,7 +107,7 @@ has flushed the first one to its transcript.
 ## dispatch.py
 
 ```
-dispatch.py <url> [recruiter y|n] [easyapply y|n] [--backend tuios|herdr] [--source X] [--target <pane>] [--dry-run]
+dispatch.py <url> [recruiter y|n] [easyapply y|n] [--backend tuios|herdr|rex] [--source X] [--target <pane>] [--dry-run]
 ```
 
 Prints one line on stdout for the notification; exits non-zero with the reason on
@@ -149,7 +172,10 @@ re-importing doesn't fight you.
 ### First run
 
 Expect prompts for file access (reading `~/.claude/projects`) and for the
-tuios or herdr socket. The Quick Action must also be enabled under System Settings → Extensions
+tuios or herdr socket (for Rex, `~/Library/Application Support/rex/server.sock`).
+The Shortcut's environment is bare, so `JOB_DISPATCH_BACKEND` from your shell
+profile doesn't reach it: add `--backend rex` (or `herdr`) to each Run Shell
+Script line to change backend there. The Quick Action must also be enabled under System Settings → Extensions
 → Sharing if it doesn't appear in the Share menu.
 
 ## Which URL gets used
@@ -265,4 +291,4 @@ be inspected directly, so when a dispatch looks wrong, start here.
   LinkedIn login-wall fallback ever becomes annoying, that's the cheapest way to
   hand the session a rendered job description — Safari only.
 - `dispatch.py`'s only coupling to the rest of this repo is conceptual; it talks
-  to tuios/herdr and the OneDrive workflow folder, never to the tracker API or database.
+  to tuios/herdr/Rex and the OneDrive workflow folder, never to the tracker API or database.
