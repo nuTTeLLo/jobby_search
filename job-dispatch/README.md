@@ -65,18 +65,22 @@ replaces PATH and drops Rex's entry; nix-config's fish `shellInit` adds
 `$REX_BIN_DIR` back.)
 
 For each terminal block the script reads `title`, then, for
-`Job-Apply-N` panes only, `pwd` (the shell's OSC 7 location; failing that, the
-foreground program's cwd via `lsof`) and `program_status`, whose `claude-code`
-record gives the same `idle` / `done` / `working` states as tuios. It runs with
-`--autostart=false`, so a stopped Rex fails the dispatch instead of starting an
-empty server.
+`Job-Apply-N` panes only, `process` and `program_status`. The `claude-code`
+record in `program_status` gives the same `idle` / `done` / `working` states as
+tuios. It runs with `--autostart=false`, so a stopped Rex fails the dispatch
+instead of starting an empty server.
+
+Rex reports no Claude session id, so the script finds the Claude process
+running under the pane's root process and reads that process's
+`~/.claude/sessions/<pid>.json`. That file holds the live `sessionId`, which
+changes the moment `/clear` starts a new session, and the `cwd`. This ties
+each pane to its own transcript. Picking the newest transcript named
+`Job-Apply-N` instead would be unsafe while tuios or herdr has a pane of the
+same name in the same folder. A pane with no Claude process under it is
+skipped as `no Claude session found`.
 
 The message goes in as a bracketed paste followed by Enter: typed newlines
 would submit the URL line on its own.
-
-Rex reports no Claude session id, so the newest transcript named `Job-Apply-N`
-is the pane's transcript. Claude writes a transcript only on a session's first
-message, so a pane with no transcript under its name counts as unused and free.
 
 The cwd check still applies: start Rex's Job-Apply panes in
 `~/Remotes/OneDrive/My Job Search`, or `--cwd` must name where they run.
@@ -110,6 +114,12 @@ starts later: the reported session, or the newest transcript named `Job-Apply-N`
 Start time comes from the first timestamped row, not the file mtime, because
 Claude touches old transcripts without adding turns. Overrides are logged as
 `session_override`.
+
+A reported id that a running Claude process still holds (per
+`~/.claude/sessions/<pid>.json`) has not lagged and is never overridden. A newer
+`Job-Apply-N` transcript in that case belongs to another multiplexer's pane of
+the same name. Rex panes skip all this, since their session comes straight from
+their own Claude process (see [Rex](#rex)).
 
 Sessions are tried in `Job-Apply-N` numeric order. If none is eligible the run
 fails with a per-session reason (`working`, `blocked`, `needs /clear`) rather

@@ -62,6 +62,7 @@ REX = next((p for p in REX_CANDIDATES if os.access(p, os.X_OK)), REX_CANDIDATES[
 PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
 # Give Claude a moment to take the paste in before Enter submits it.
 PASTE_SETTLE_SEC = 0.3
+CLAUDE_SESSIONS_DIR = os.path.expanduser("~/.claude/sessions")
 
 JOB_SEARCH_DIR = os.path.expanduser("~/Remotes/OneDrive/My Job Search")
 PANE_TITLE_RE = re.compile(r"^Job-Apply-(\d+)$")
@@ -333,7 +334,7 @@ def latest_named_sessions(tdir):
     return latest
 
 
-def current_session_id(title, herdr_id, latest, tdir):
+def current_session_id(title, herdr_id, latest, tdir, live):
     """The session actually live in a pane, which herdr can lag behind.
 
     /clear starts a fresh session (new transcript) in the same pane, but herdr's
@@ -343,9 +344,13 @@ def current_session_id(title, herdr_id, latest, tdir):
     newer session, so trust whichever of herdr's id and the newest transcript
     carrying this name started later. File mtimes are no use here: Claude
     touches old transcripts without adding turns.
+
+    An id some running Claude process still holds (live) hasn't lagged, and is
+    kept: another multiplexer can have a newer Job-Apply-N of the same name in
+    the same cwd, and that one belongs to its pane, not this one.
     """
     newest = latest.get(title)
-    if newest is None or newest[1] == herdr_id:
+    if newest is None or newest[1] == herdr_id or herdr_id in live:
         return herdr_id
     if herdr_id:
         _, herdr_started = transcript_header(os.path.join(tdir, "%s.jsonl" % herdr_id))
@@ -397,32 +402,64 @@ def run_rex(*args, parse=True):
         raise DispatchError("rex %s returned non-JSON output" % args[0])
 
 
-def rex_process_cwd(sid, bid):
-    """Working directory of a block's foreground program.
+def claude_processes():
+    """Running Claude processes' session records, and every process's parent.
 
-    For a pane that runs claude with no shell around it, nothing sends OSC 7,
-    so Rex has no pwd to report.
+    Claude keeps ~/.claude/sessions/<pid>.json per process, holding the live
+    sessionId (it changes the moment /clear starts a new session) and the cwd.
+    Files of exited processes linger, so keep only pids still running.
     """
-    pid = (run_rex("block", "call", "-s", sid, "-b", bid, "process").get("foreground") or {}).get("pid")
-    if not pid:
-        return None
     try:
         out = subprocess.run(
-            ["/usr/sbin/lsof", "-a", "-d", "cwd", "-p", str(pid), "-Fn"],
-            capture_output=True, text=True, timeout=5,
+            ["/bin/ps", "-axo", "pid=,ppid="], capture_output=True, text=True, timeout=5
         ).stdout
     except (OSError, subprocess.TimeoutExpired):
-        return None
-    return next((line[1:] for line in out.splitlines() if line.startswith("n")), None)
+        out = ""
+    parents = {}
+    for line in out.splitlines():
+        fields = line.split()
+        if len(fields) == 2:
+            parents[int(fields[0])] = int(fields[1])
+    records = {}
+    try:
+        entries = os.listdir(CLAUDE_SESSIONS_DIR)
+    except OSError:
+        entries = []
+    for entry in entries:
+        if not entry.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(CLAUDE_SESSIONS_DIR, entry), encoding="utf-8") as handle:
+                record = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        if record.get("pid") in parents:
+            records[record["pid"]] = record
+    return records, parents
+
+
+def pane_claude(root_pid, records, parents):
+    """Session record of the newest Claude process under a pane's root process."""
+    found = []
+    for pid, record in records.items():
+        while pid and pid != 1:
+            if pid == root_pid:
+                found.append(record)
+                break
+            pid = parents.get(pid)
+    return max(found, key=lambda r: r.get("startedAt") or 0, default=None)
 
 
 def rex_agents():
     """Rex terminal blocks, shaped like herdr's agent list.
 
-    Rex reports no Claude session id, so session_id is None and the newest
-    transcript carrying the pane's name decides (see current_session_id).
-    Title is read first so only Job-Apply panes pay for the other two calls.
+    Rex reports Claude's state but not its session, so each pane is tied to
+    its own session through the Claude process running under it. Matching
+    transcripts by the pane's name instead could pick up another
+    multiplexer's Job-Apply-N in the same cwd. Title is read first so only
+    Job-Apply panes pay for the other calls.
     """
+    records, parents = claude_processes()
     for session in run_rex("ls", "--json").get("sessions", []):
         sid = session["session_id"]
         for block in run_rex("block", "ls", "-s", sid, "--json").get("blocks", []):
@@ -433,21 +470,33 @@ def rex_agents():
             title = TITLE_GLYPHS_RE.sub("", title).strip()
             if not PANE_TITLE_RE.match(title):
                 continue
-            # The shell's OSC 7 location: a file:// URL with the host in it.
-            pwd = run_rex("block", "call", "-s", sid, "-b", bid, "pwd").get("pwd") or ""
-            cwd = unquote(urlparse(pwd).path) or rex_process_cwd(sid, bid)
-            records = run_rex("block", "call", "-s", sid, "-b", bid, "program_status")
-            claude = next(
-                (r for r in records.get("records", []) if r.get("effective_app") == "claude-code"),
+            root = (run_rex("block", "call", "-s", sid, "-b", bid, "process").get("child") or {}).get("pid")
+            claude = pane_claude(root, records, parents)
+            if claude is None:
+                # Still list the pane, with a reason, rather than hide it.
+                # The shell's OSC 7 location is a file:// URL with the host in it.
+                pwd = run_rex("block", "call", "-s", sid, "-b", bid, "pwd").get("pwd") or ""
+                yield {
+                    "pane_id": bid,
+                    "rex_session": sid,
+                    "title": title,
+                    "cwd": unquote(urlparse(pwd).path) or None,
+                    "status": "no Claude session found",
+                    "session_id": None,
+                }
+                continue
+            status = run_rex("block", "call", "-s", sid, "-b", bid, "program_status")
+            state = next(
+                (r for r in status.get("records", []) if r.get("effective_app") == "claude-code"),
                 {},
             )
             yield {
                 "pane_id": bid,
                 "rex_session": sid,
                 "title": title,
-                "cwd": cwd,
-                "status": claude.get("state"),
-                "session_id": None,
+                "cwd": claude.get("cwd"),
+                "status": state.get("state"),
+                "session_id": claude.get("sessionId"),
             }
 
 
@@ -456,6 +505,9 @@ def list_sessions(cwd, backend):
     agents = rex_agents() if backend == "rex" else herdr_agents(backend)
     tdir = transcript_dir(cwd)
     latest = latest_named_sessions(tdir)
+    live = set() if backend == "rex" else {
+        r.get("sessionId") for r in claude_processes()[0].values()
+    }
     found = []
     for agent in agents:
         if agent["cwd"] != cwd:
@@ -464,6 +516,10 @@ def list_sessions(cwd, backend):
         match = PANE_TITLE_RE.match(title)
         if not match:
             continue
+        session_id = agent["session_id"]
+        if backend != "rex":
+            # Rex's id comes from Claude itself and never lags; herdr's can.
+            session_id = current_session_id(title, session_id, latest, tdir, live)
         found.append(
             {
                 "n": int(match.group(1)),
@@ -471,11 +527,7 @@ def list_sessions(cwd, backend):
                 "rex_session": agent.get("rex_session"),
                 "title": title,
                 "status": agent["status"],
-                "session_id": current_session_id(title, agent["session_id"], latest, tdir),
-                # Claude writes a transcript only on the first message, and Rex
-                # reports no session id, so a Rex pane with no transcript under
-                # its name has never been used.
-                "unused": backend == "rex" and title not in latest,
+                "session_id": session_id,
             }
         )
     return sorted(found, key=lambda s: s["n"])
@@ -489,10 +541,6 @@ def send_prompt(backend, session, message):
     run_rex("send", *target, PASTE_START + message + PASTE_END, parse=False)
     time.sleep(PASTE_SETTLE_SEC)
     run_rex("send-key", *target, "enter", parse=False)
-
-
-def is_fresh(session, tdir):
-    return session["unused"] or is_cleared(session["session_id"], tdir)
 
 
 def is_cleared(session_id, tdir):
@@ -567,7 +615,7 @@ def choose(sessions, tdir, state):
             reasons.append((session["title"], session["status"]))
         elif in_cooldown(session, state):
             reasons.append((session["title"], "just dispatched"))
-        elif not is_fresh(session, tdir):
+        elif not is_cleared(session["session_id"], tdir):
             reasons.append((session["title"], "needs /clear"))
         else:
             return session, reasons
@@ -608,7 +656,7 @@ def pick(backend, cwd, target, state):
     # An explicit target still gets tested, so it can't clobber unactioned work.
     if chosen["status"] not in FREE_STATUSES:
         raise DispatchError("%s is %s" % (chosen["title"], chosen["status"]))
-    if not is_fresh(chosen, tdir):
+    if not is_cleared(chosen["session_id"], tdir):
         raise DispatchError("%s needs /clear" % chosen["title"])
     return chosen, []
 
@@ -644,9 +692,9 @@ def main():
     )
     args = parser.parse_args()
     # argparse checks choices only for values given on the command line, not
-    # for a preference taken from the environment.
+    # for a preference taken from the environment, which --backend overrides.
     preferred = os.environ.get("JOB_DISPATCH_BACKEND")
-    if preferred and preferred not in BACKENDS:
+    if not args.backend and preferred and preferred not in BACKENDS:
         parser.error("JOB_DISPATCH_BACKEND=%r is not one of: %s"
                      % (preferred, ", ".join(BACKENDS)))
     log("invoked", argv=sys.argv[1:])
