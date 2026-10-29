@@ -29,9 +29,9 @@ herdr CLI; only the socket differs. Pick one with `--backend`:
 
 | `--backend` | Sessions | Socket |
 |---|---|---|
-| `tuios` (default) | `tuios list-agents` | `/tmp/tuios-<uid>/tuios.sock.herdr` |
+| `tuios` | `tuios list-agents` | `/tmp/tuios-<uid>/tuios.sock.herdr` |
 | `herdr` | `herdr agent list` | herdr's own server |
-| `rex` | `rex ls` / `rex block ls` | Rex's own server, through its CLI |
+| `rex` (default) | `rex ls` / `rex block ls` | Rex's own server, through its CLI |
 
 `JOB_DISPATCH_BACKEND` sets the default when the flag is absent. The script
 always sets or clears `HERDR_SOCKET_PATH` itself: a tuios pane already exports
@@ -174,7 +174,7 @@ re-importing doesn't fight you.
 Expect prompts for file access (reading `~/.claude/projects`) and for the
 tuios or herdr socket (for Rex, `~/Library/Application Support/rex/server.sock`).
 The Shortcut's environment is bare, so `JOB_DISPATCH_BACKEND` from your shell
-profile doesn't reach it: add `--backend rex` (or `herdr`) to each Run Shell
+profile doesn't reach it: add `--backend tuios` (or `herdr`) to each Run Shell
 Script line to change backend there. The Quick Action must also be enabled under System Settings → Extensions
 → Sharing if it doesn't appear in the Share menu.
 

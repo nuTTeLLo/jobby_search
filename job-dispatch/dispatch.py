@@ -3,7 +3,7 @@
 
 Invoked by the "Send to Job-Apply" Shortcut (macOS Share Sheet). Builds the
 4-line trigger message that the job-search workflow expects and submits it to a
-Job-Apply-N pane, in tuios (the default), herdr or Rex. tuios answers herdr's
+Job-Apply-N pane, in Rex (the default), tuios or herdr. tuios answers herdr's
 command line on its own socket, so both are driven through the herdr CLI; Rex
 has no such socket and is driven through its own CLI.
 
@@ -35,7 +35,7 @@ BACKEND_SOCKETS = {
     "herdr": None,
 }
 BACKENDS = sorted(list(BACKEND_SOCKETS) + ["rex"])
-DEFAULT_BACKEND = "tuios"
+DEFAULT_BACKEND = "rex"
 
 # Rex ships its CLI inside the app bundle and puts nothing on PATH. The Beta
 # app is what's installed today; the plain name is for when it drops the tag.
