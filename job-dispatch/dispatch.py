@@ -17,6 +17,7 @@ import getpass
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -36,14 +37,26 @@ BACKEND_SOCKETS = {
 }
 BACKENDS = sorted(list(BACKEND_SOCKETS) + ["rex"])
 DEFAULT_BACKEND = "rex"
+# Without --backend, the others are tried in this order after the preferred one.
+FALLBACK_ORDER = ("rex", "tuios", "herdr")
 
-# Rex ships its CLI inside the app bundle and puts nothing on PATH. The Beta
-# app is what's installed today; the plain name is for when it drops the tag.
+# Rex puts its CLI on PATH (as REX_BIN_DIR) only inside its own terminals; the
+# Shortcut's sandbox gets neither, so also look where Rex installs it: the
+# server it keeps current under Application Support, then the app bundle (Beta
+# today; the plain name is for when it drops the tag).
 REX_CANDIDATES = [
+    os.path.join(os.environ["REX_BIN_DIR"], "rex") if os.environ.get("REX_BIN_DIR") else None,
+    shutil.which("rex"),
+    os.path.expanduser(
+        "~/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current"
+        "/Rex Server.app/Contents/MacOS/rex"
+    ),
+] + [
     "/Applications/%s.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex" % app
     for app in ("Rex Beta", "Rex")
 ]
-REX = next((p for p in REX_CANDIDATES if os.path.exists(p)), REX_CANDIDATES[0])
+REX_CANDIDATES = [p for p in REX_CANDIDATES if p]
+REX = next((p for p in REX_CANDIDATES if os.access(p, os.X_OK)), REX_CANDIDATES[-1])
 # Claude only treats a multi-line message as one prompt if it arrives as a
 # paste; typed newlines would submit the URL line on its own.
 PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
@@ -568,6 +581,38 @@ def summarise(reasons):
     return ", ".join("%d %s" % (n, reason) for reason, n in sorted(counts.items()))
 
 
+def backend_order(pinned):
+    """Backends to try: just the one asked for, else the preferred one first."""
+    if pinned:
+        return [pinned]
+    preferred = os.environ.get("JOB_DISPATCH_BACKEND") or DEFAULT_BACKEND
+    return [preferred] + [b for b in FALLBACK_ORDER if b != preferred]
+
+
+def pick(backend, cwd, target, state):
+    """(session, skipped reasons) in one backend; DispatchError says why none."""
+    sessions = list_sessions(cwd, backend)
+    if not sessions:
+        raise DispatchError("no Job-Apply sessions in %s" % cwd)
+    tdir = transcript_dir(cwd)
+
+    if not target:
+        chosen, reasons = choose(sessions, tdir, state)
+        if chosen is None:
+            raise DispatchError("no free session: %s" % summarise(reasons))
+        return chosen, reasons
+
+    chosen = next((s for s in sessions if s["pane_id"] == target), None)
+    if chosen is None:
+        raise DispatchError("no such pane: %s" % target)
+    # An explicit target still gets tested, so it can't clobber unactioned work.
+    if chosen["status"] not in FREE_STATUSES:
+        raise DispatchError("%s is %s" % (chosen["title"], chosen["status"]))
+    if not is_fresh(chosen, tdir):
+        raise DispatchError("%s needs /clear" % chosen["title"])
+    return chosen, []
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("url", nargs="?")
@@ -578,9 +623,8 @@ def main():
     parser.add_argument("--target", help="dispatch to this pane_id instead of the first free one")
     parser.add_argument(
         "--backend", choices=BACKENDS,
-        default=os.environ.get("JOB_DISPATCH_BACKEND") or DEFAULT_BACKEND,
-        help="multiplexer whose Job-Apply sessions to use (default: $JOB_DISPATCH_BACKEND, else %s)"
-        % DEFAULT_BACKEND,
+        help="use only this multiplexer's Job-Apply sessions (default: try "
+        "$JOB_DISPATCH_BACKEND, else %s, then the others)" % DEFAULT_BACKEND,
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -600,10 +644,11 @@ def main():
     )
     args = parser.parse_args()
     # argparse checks choices only for values given on the command line, not
-    # for a default taken from the environment.
-    if args.backend not in BACKENDS:
+    # for a preference taken from the environment.
+    preferred = os.environ.get("JOB_DISPATCH_BACKEND")
+    if preferred and preferred not in BACKENDS:
         parser.error("JOB_DISPATCH_BACKEND=%r is not one of: %s"
-                     % (args.backend, ", ".join(BACKENDS)))
+                     % (preferred, ", ".join(BACKENDS)))
     log("invoked", argv=sys.argv[1:])
 
     raw = args.url
@@ -645,39 +690,30 @@ def main():
             "page. Re-share, or pass --force if this repeat is deliberate."
         )
 
-    sessions = list_sessions(args.cwd, args.backend)
-    if not sessions:
-        raise DispatchError("no %s Job-Apply sessions found in %s" % (args.backend, args.cwd))
-
-    tdir = transcript_dir(args.cwd)
     state = read_state()
-
-    if args.target:
-        chosen = next((s for s in sessions if s["pane_id"] == args.target), None)
-        if chosen is None:
-            raise DispatchError("no such pane: %s" % args.target)
-        # An explicit target still gets tested, so it can't clobber unactioned work.
-        if chosen["status"] not in FREE_STATUSES:
-            raise DispatchError("%s is %s" % (chosen["title"], chosen["status"]))
-        if not is_fresh(chosen, tdir):
-            raise DispatchError("%s needs /clear" % chosen["title"])
-        reasons = []
+    failures = []
+    for backend in backend_order(args.backend):
+        try:
+            chosen, reasons = pick(backend, args.cwd, args.target, state)
+            break
+        except DispatchError as exc:
+            failures.append("%s: %s" % (backend, exc))
+            log("backend_skipped", backend=backend, reason=str(exc))
     else:
-        chosen, reasons = choose(sessions, tdir, state)
-
-    if chosen is None:
-        raise DispatchError("no free session: %s" % summarise(reasons))
+        raise DispatchError("no free Job-Apply session - " + "; ".join(failures))
 
     if args.dry_run:
-        print("would send to %s %s (%s):" % (args.backend, chosen["title"], chosen["pane_id"]))
+        print("would send to %s %s (%s):" % (backend, chosen["title"], chosen["pane_id"]))
         for line in message.splitlines():
             print("  | %s" % line)
+        for line in failures:
+            print("skipped %s" % line)
         if reasons:
             print("skipped: %s" % summarise(reasons))
         return
 
-    log("dispatch", url=url, source=source, pane=chosen["pane_id"], backend=args.backend)
-    send_prompt(args.backend, chosen, message)
+    log("dispatch", url=url, source=source, pane=chosen["pane_id"], backend=backend)
+    send_prompt(backend, chosen, message)
     write_state(chosen["pane_id"], url)
     origin = "live" if live else "share sheet"
     flags = "".join([" recruiter" if args.recruiter == "y" else "",

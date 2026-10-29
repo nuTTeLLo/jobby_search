@@ -25,19 +25,25 @@ File → Share (Brave / Safari / Zen)
 tuios and herdr each run their **own** `Job-Apply-N` sessions -- separate Claude
 processes with separate transcripts, even when the names match. tuios answers
 herdr's command line on a socket of its own, so both are driven through the same
-herdr CLI; only the socket differs. Pick one with `--backend`:
+herdr CLI; only the socket differs. Rex has a CLI of its own.
 
 | `--backend` | Sessions | Socket |
 |---|---|---|
+| `rex` (preferred) | `rex ls` / `rex block ls` | Rex's own server, through its CLI |
 | `tuios` | `tuios list-agents` | `/tmp/tuios-<uid>/tuios.sock.herdr` |
 | `herdr` | `herdr agent list` | herdr's own server |
-| `rex` (default) | `rex ls` / `rex block ls` | Rex's own server, through its CLI |
 
-`JOB_DISPATCH_BACKEND` sets the default when the flag is absent. The script
-always sets or clears `HERDR_SOCKET_PATH` itself: a tuios pane already exports
-it, so a herdr dispatch run from a tuios terminal would otherwise land in tuios.
-If tuios is chosen and its socket is missing, the run fails with
-`tuios is not running` rather than falling back to herdr's sessions.
+Without `--backend`, the backends are tried in turn: `JOB_DISPATCH_BACKEND` if
+set, else `rex`, then the rest in table order. The first with a free session
+gets the job. One that isn't running, has no Job-Apply panes in the cwd, or has
+none free is skipped (logged as `backend_skipped`), and the run fails only when
+every backend has been skipped, listing each one's reason. `--backend` pins one
+backend and disables the fallback; pass it with `--target`, since pane ids
+belong to one backend.
+
+The script always sets or clears `HERDR_SOCKET_PATH` itself: a tuios pane already
+exports it, so a herdr dispatch run from a tuios terminal would otherwise land in
+tuios.
 
 Two differences in what tuios reports are absorbed: it sends only
 `terminal_title`, which Claude prefixes with a status glyph (`✳ Job-Apply-3`),
@@ -46,10 +52,19 @@ herdr says `idle`, so both count as free and the transcript check decides.
 
 ### Rex
 
-Rex has no herdr-compatible socket, so it goes through its own CLI, which lives
-inside the app bundle (`/Applications/Rex Beta.app/Contents/Helpers/Rex
-Server.rex/Contents/MacOS/rex`, or the same path under `Rex.app`) and is not on
-PATH. For each terminal block the script reads `title`, then, for
+Rex has no herdr-compatible socket, so it goes through its own CLI. Rex puts
+that CLI on PATH, and in `REX_BIN_DIR`, only inside its own terminals. The
+Shortcut's sandbox has neither, so the script tries, in order, `$REX_BIN_DIR/rex`,
+`rex` on PATH, the server Rex keeps current at `~/Library/Application
+Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS/rex`,
+and the copy in the app bundle (`/Applications/Rex Beta.app/Contents/Helpers/Rex
+Server.rex/Contents/MacOS/rex`, or the same path under `Rex.app`).
+
+(In a Rex terminal with a fish login shell, nix-darwin's `set-environment`
+replaces PATH and drops Rex's entry; nix-config's fish `shellInit` adds
+`$REX_BIN_DIR` back.)
+
+For each terminal block the script reads `title`, then, for
 `Job-Apply-N` panes only, `pwd` (the shell's OSC 7 location; failing that, the
 foreground program's cwd via `lsof`) and `program_status`, whose `claude-code`
 record gives the same `idle` / `done` / `working` states as tuios. It runs with
@@ -174,8 +189,8 @@ re-importing doesn't fight you.
 Expect prompts for file access (reading `~/.claude/projects`) and for the
 tuios or herdr socket (for Rex, `~/Library/Application Support/rex/server.sock`).
 The Shortcut's environment is bare, so `JOB_DISPATCH_BACKEND` from your shell
-profile doesn't reach it: add `--backend tuios` (or `herdr`) to each Run Shell
-Script line to change backend there. The Quick Action must also be enabled under System Settings → Extensions
+profile doesn't reach it. It doesn't need to, since all backends are tried; add
+`--backend <name>` to the Run Shell Script lines only to pin one. The Quick Action must also be enabled under System Settings → Extensions
 → Sharing if it doesn't appear in the Share menu.
 
 ## Which URL gets used
