@@ -21,7 +21,8 @@ set -a
 . "$HOME/.config/jobsearch/telegram.env"
 set +a
 
-sa_token="$(fnox -c "$HOME/.config/fnox/fnox.toml" get JOBSEARCH_OP_TOKEN)"
+# fnox loads ~/.config/fnox/config.toml (its global config) from any directory.
+sa_token="$(fnox get JOBSEARCH_OP_TOKEN)"
 # The Environment's variables exist only inside the child; it hands back
 # JWT_SECRET alone.
 JWT_SECRET="$(OP_SERVICE_ACCOUNT_TOKEN="$sa_token" "$HOME/.local/bin/op-beta" run \
