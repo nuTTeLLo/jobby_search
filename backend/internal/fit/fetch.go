@@ -29,7 +29,7 @@ const (
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
 		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 	linkedInPostingURL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
-	seekGraphQLURL     = "https://www.seek.com.au/graphql"
+	seekGraphQLURL     = "https://au.seek.com/graphql"
 	// An employer's careers page carries menus and boilerplate around the posting;
 	// past this many characters it is almost all noise.
 	maxPageTextLength = 40000

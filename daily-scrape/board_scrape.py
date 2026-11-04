@@ -39,7 +39,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 LINKEDIN_POSTING_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting"
-SEEK_GRAPHQL_URL = "https://www.seek.com.au/graphql"
+SEEK_GRAPHQL_URL = "https://au.seek.com/graphql"
 
 # JobSpy prefixes its ids per board. LinkedIn rows keep the bare posting id so they
 # carry on from the rows the LinkedIn-only scraper wrote; the others get a readable
@@ -149,7 +149,11 @@ def request_with_retry(url, label, warnings, **kwargs):
             if exc.code in (429, 500, 502, 503, 504) and attempt < 2:
                 time.sleep(5 * (2**attempt))
                 continue
-            warnings.append("%s failed: HTTP %s" % (label, exc.code))
+            # urllib will not follow a redirected POST, so a board moving its API shows
+            # up here. Name the new address so the warning says what to change.
+            location = exc.headers.get("Location") if 300 <= exc.code < 400 else None
+            moved = " (redirects to %s)" % location if location else ""
+            warnings.append("%s failed: HTTP %s%s" % (label, exc.code, moved))
             return None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt < 2:
