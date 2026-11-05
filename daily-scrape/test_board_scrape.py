@@ -1,7 +1,11 @@
 """Run with the repo's venv: ../.venv/bin/python -m unittest test_board_scrape"""
 
+import http.client
 import re
+import threading
 import unittest
+from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 import board_scrape as scrape
 
@@ -51,6 +55,86 @@ class ParseLinkedinCards(unittest.TestCase):
         self.assertEqual(rows[0]["location"], "Berlin, Germany")
         self.assertEqual(rows[0]["date_posted"], "2026-11-04")
         self.assertEqual(rows[0]["job_url"], "https://www.linkedin.com/jobs/view/123")
+
+
+def card(posting_id):
+    return (
+        '<div class="base-search-card" data-entity-urn="urn:li:jobPosting:%d">'
+        '<h3 class="base-search-card__title">Engineer</h3></div>' % posting_id
+    )
+
+
+class WorldwideSearch(unittest.TestCase):
+    SEARCH = scrape.Search("Elixir", "Elixir Phoenix", scrape.SCOPE_WORLDWIDE)
+
+    def setUp(self):
+        patcher = mock.patch.object(scrape.time, "sleep")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_sends_a_worldwide_remote_query(self):
+        with mock.patch.object(scrape, "request_with_retry", return_value=None) as fetch:
+            scrape.search_linkedin_worldwide({"hours_old": 24}, self.SEARCH, [])
+        query = parse_qs(urlsplit(fetch.call_args.args[0]).query)
+        self.assertEqual(query["keywords"], ["Elixir Phoenix"])
+        self.assertEqual(query["geoId"], ["92000000"])
+        self.assertEqual(query["f_WT"], ["2"])
+        self.assertEqual(query["f_TPR"], ["r86400"])
+
+    def test_stops_at_the_configured_number_of_results(self):
+        page = "".join(card(i) for i in range(10))
+        with mock.patch.object(scrape, "request_with_retry", return_value=page) as fetch:
+            rows = scrape.search_linkedin_worldwide(
+                {"hours_old": 24, "results_per_search": 15}, self.SEARCH, []
+            )
+        self.assertEqual(len(rows), 15)
+        self.assertEqual(fetch.call_count, 2)
+
+    def test_a_short_page_does_not_end_the_search(self):
+        pages = [card(1) + card(2), card(3), ""]
+        with mock.patch.object(scrape, "request_with_retry", side_effect=pages):
+            rows = scrape.search_linkedin_worldwide({"hours_old": 24}, self.SEARCH, [])
+        self.assertEqual([row["id"] for row in rows], ["li-1", "li-2", "li-3"])
+
+
+class SearchDeadline(unittest.TestCase):
+    SEARCH = scrape.Search("Elixir", "Elixir Phoenix", scrape.SCOPE_WORLDWIDE)
+
+    def test_worldwide_search_is_abandoned_at_the_deadline(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def stuck(cfg, search, warnings):
+            release.wait(5)
+            warnings.append("too late")
+            return []
+
+        warnings = []
+        with mock.patch.object(scrape, "search_linkedin_worldwide", stuck):
+            with self.assertRaises(scrape.SearchTimedOut):
+                scrape.search_board(
+                    {"search_timeout_seconds": 0.05}, "linkedin", self.SEARCH, warnings
+                )
+        self.assertEqual(warnings, [])
+
+    def test_warnings_from_a_finished_search_are_kept(self):
+        def finished(cfg, search, warnings):
+            warnings.append("page failed")
+            return [{"id": "li-1"}]
+
+        warnings = []
+        with mock.patch.object(scrape, "search_linkedin_worldwide", finished):
+            rows = scrape.search_board({}, "linkedin", self.SEARCH, warnings)
+        self.assertEqual(rows, [{"id": "li-1"}])
+        self.assertEqual(warnings, ["page failed"])
+
+
+class RequestWithRetry(unittest.TestCase):
+    def test_a_truncated_response_is_retried(self):
+        replies = [http.client.IncompleteRead(b""), "body"]
+        with mock.patch.object(scrape.time, "sleep"):
+            with mock.patch.object(scrape, "http_request", side_effect=replies):
+                self.assertEqual(scrape.request_with_retry("url", "label", []), "body")
 
 
 class MatchesNiche(unittest.TestCase):

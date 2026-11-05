@@ -180,7 +180,7 @@ def request_with_retry(url, label, warnings, **kwargs):
             moved = " (redirects to %s)" % location if location else ""
             warnings.append("%s failed: HTTP %s%s" % (label, exc.code, moved))
             return None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
             if attempt < 2:
                 time.sleep(5 * (2**attempt))
                 continue
@@ -219,8 +219,9 @@ def search_linkedin_worldwide(cfg, search, warnings):
 
     Asks LinkedIn directly because this needs its geoId, which JobSpy cannot send.
     """
+    wanted = cfg.get("results_per_search", 100)
     rows = []
-    for start in range(0, cfg.get("results_per_search", 100), LINKEDIN_PAGE_SIZE):
+    for start in range(0, wanted, LINKEDIN_PAGE_SIZE):
         query = urllib.parse.urlencode({
             "keywords": search.keywords,
             "geoId": LINKEDIN_WORLDWIDE_GEO_ID,
@@ -235,23 +236,15 @@ def search_linkedin_worldwide(cfg, search, warnings):
             headers={"Accept": "text/html,application/xhtml+xml"},
         )
         page = parse_linkedin_cards(body) if body else []
-        rows += page
-        if len(page) < LINKEDIN_PAGE_SIZE:
+        if not page:
             break
+        rows += page
         time.sleep(random.uniform(3.0, 6.0))
-    return rows
+    return rows[:wanted]
 
 
-def search_board(cfg, site, search, warnings):
-    """One search on one board.
-
-    Boards are searched one at a time so a board that errors or throttles costs
-    only its own results, and so each gets its own date window (see seek below).
-    Returns rows as dicts in JobSpy's shape, with missing values as None.
-    """
-    if search.scope == SCOPE_WORLDWIDE:
-        return search_linkedin_worldwide(cfg, search, warnings)
-
+def search_jobspy(cfg, site, search):
+    """One JobSpy search on one board, as dicts with missing values as None."""
     from jobspy import scrape_jobs  # imported lazily: pandas is slow to load
 
     remote = search.scope == SCOPE_REMOTE
@@ -267,43 +260,59 @@ def search_board(cfg, site, search, warnings):
         # within_window, so remote postings are not crowded out by on-site ones.
         hours = None
 
+    frame = scrape_jobs(
+        site_name=site,
+        search_term=search.keywords,
+        location=cfg["remote_location"] if remote else cfg["location"],
+        is_remote=remote,
+        hours_old=hours,
+        results_wanted=cfg.get("results_per_search", 100),
+        country_indeed=cfg.get("country_indeed", "australia"),
+        verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
+    )
+    if frame is None or frame.empty:
+        return []
+    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+
+
+def search_board(cfg, site, search, warnings):
+    """One search on one board, within the search deadline.
+
+    Boards are searched one at a time so a board that errors or throttles costs
+    only its own results, and so each gets its own date window (see search_jobspy).
+    Returns rows as dicts in JobSpy's shape.
+    """
     label = "%s '%s'" % (site, search_label(search))
 
     # Run the search on a daemon thread so it can be abandoned at the deadline: a
     # Python thread cannot be killed, but a daemon one does not stop the process
-    # exiting once the rest of the run is done.
+    # exiting once the rest of the run is done. Its warnings stay separate until it
+    # finishes, so an abandoned search cannot add to them later.
     outcome = {}
+    search_warnings = []
 
     def run():
         try:
-            outcome["frame"] = scrape_jobs(
-                site_name=site,
-                search_term=search.keywords,
-                location=cfg["remote_location"] if remote else cfg["location"],
-                is_remote=remote,
-                hours_old=hours,
-                results_wanted=cfg.get("results_per_search", 100),
-                country_indeed=cfg.get("country_indeed", "australia"),
-                verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
-            )
+            if search.scope == SCOPE_WORLDWIDE:
+                outcome["rows"] = search_linkedin_worldwide(cfg, search, search_warnings)
+            else:
+                outcome["rows"] = search_jobspy(cfg, site, search)
         except Exception as exc:  # noqa: BLE001 - one board's failure must not end the run
             outcome["error"] = exc
 
     timeout = cfg.get("search_timeout_seconds", DEFAULT_SEARCH_TIMEOUT)
-    worker = threading.Thread(target=run, name="jobspy-%s" % site, daemon=True)
+    worker = threading.Thread(target=run, name="search-%s" % site, daemon=True)
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
         raise SearchTimedOut("%s ran past %ds" % (label, timeout))
 
+    warnings.extend(search_warnings)
     if "error" in outcome:
         exc = outcome["error"]
         warnings.append("%s failed: %s: %s" % (label, type(exc).__name__, exc))
         return []
-    frame = outcome.get("frame")
-    if frame is None or frame.empty:
-        return []
-    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+    return outcome["rows"]
 
 
 def html_to_text(html):
