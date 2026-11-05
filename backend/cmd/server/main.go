@@ -57,6 +57,15 @@ func main() {
 		log.Fatalf("Failed to backfill jobs.applied_at: %v", err)
 	}
 
+	// Same for jobs rejected before rejected_at existed. The rejection is usually
+	// the last write to a job, so updated_at is close unless it was edited later.
+	if err := db.Exec(
+		"UPDATE jobs SET rejected_at = updated_at WHERE status = ? AND rejected_at IS NULL",
+		string(domain.StatusRejected),
+	).Error; err != nil {
+		log.Fatalf("Failed to backfill jobs.rejected_at: %v", err)
+	}
+
 	// Now enforce NOT NULL on user_id
 	if err := db.Exec("ALTER TABLE jobs ALTER COLUMN user_id SET NOT NULL").Error; err != nil {
 		log.Fatalf("Failed to add NOT NULL constraint to jobs.user_id: %v", err)

@@ -196,6 +196,7 @@ func (s *JobService) UpdateJob(userID, id string, input *domain.JobUpdateInput) 
 	if input.Status != "" {
 		job.Status = input.Status
 		stampApplied(job)
+		stampRejected(job)
 	}
 	if input.Notes != "" {
 		job.Notes = input.Notes
@@ -226,6 +227,20 @@ func stampApplied(job *domain.Job) {
 	}
 }
 
+// stampRejected records when a job became "rejected". A repeated rejected status
+// keeps the first stamp, and a revived application loses it, so RejectedAt is set
+// exactly while the job stands rejected.
+func stampRejected(job *domain.Job) {
+	if job.Status != string(domain.StatusRejected) {
+		job.RejectedAt = nil
+		return
+	}
+	if job.RejectedAt == nil {
+		now := time.Now()
+		job.RejectedAt = &now
+	}
+}
+
 func (s *JobService) UpdateJobStatus(userID, id string, status string) (*domain.Job, error) {
 	job, err := s.repo.GetByID(id, userID)
 	if err != nil {
@@ -233,6 +248,7 @@ func (s *JobService) UpdateJobStatus(userID, id string, status string) (*domain.
 	}
 	job.Status = status
 	stampApplied(job)
+	stampRejected(job)
 
 	if err := s.repo.Update(job); err != nil {
 		return nil, err

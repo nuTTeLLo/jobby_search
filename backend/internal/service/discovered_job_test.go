@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"job-tracker-backend/internal/domain"
+	"job-tracker-backend/internal/repository"
 )
 
 func TestMatchKey(t *testing.T) {
@@ -81,5 +82,31 @@ func TestNewFitAssessment(t *testing.T) {
 	fit.addColumns(fields)
 	if fields["fit_score"] != 4 || fields["fit_scored_at"] != scoredAt {
 		t.Errorf("unexpected update columns: %v", fields)
+	}
+}
+
+func TestLatestApplications(t *testing.T) {
+	day := func(d int) time.Time { return time.Date(2026, 10, d, 0, 0, 0, 0, time.UTC) }
+	rejected := day(20)
+
+	latest := latestApplications([]repository.AppliedJob{
+		// Latest application rejected: the rejection shows.
+		{CompanyName: "Acme Pty Ltd", AppliedAt: day(1)},
+		{CompanyName: "Acme", AppliedAt: day(10), RejectedAt: &rejected},
+		// Rejected, then applied again: the live application wins.
+		{CompanyName: "Globex", AppliedAt: day(1), RejectedAt: &rejected},
+		{CompanyName: "Globex", AppliedAt: day(10)},
+		// No usable company name.
+		{CompanyName: "!!!", AppliedAt: day(1)},
+	})
+
+	if len(latest) != 2 {
+		t.Fatalf("got %d companies, want 2: %v", len(latest), latest)
+	}
+	if got := latest["acme"]; !got.AppliedAt.Equal(day(10)) || got.RejectedAt == nil {
+		t.Errorf("acme = %+v, want the rejected application from day 10", got)
+	}
+	if got := latest["globex"]; !got.AppliedAt.Equal(day(10)) || got.RejectedAt != nil {
+		t.Errorf("globex = %+v, want the live application from day 10", got)
 	}
 }

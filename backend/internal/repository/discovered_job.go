@@ -134,25 +134,25 @@ func (r *DiscoveredJobRepository) CompaniesForUser(userID string) ([]string, err
 	return companies, nil
 }
 
-// CompanyLastApplied is the most recent application at one company, as named on the
-// user's tracked jobs.
-type CompanyLastApplied struct {
-	CompanyName   string
-	LastAppliedAt time.Time
+// AppliedJob is one application the user actually sent, as named on their tracked
+// jobs. RejectedAt is nil unless the application currently stands rejected.
+type AppliedJob struct {
+	CompanyName string
+	AppliedAt   time.Time
+	RejectedAt  *time.Time
 }
 
-// LastAppliedByCompany returns, per company, when the user last applied there. Jobs
-// still at new, viewed or shortlisted were never applied to and are left out.
-// Rejected jobs that predate applied_at have none, so created_at stands in for it;
-// the two fall on the same day for jobs that have both.
-func (r *DiscoveredJobRepository) LastAppliedByCompany(userID string) ([]CompanyLastApplied, error) {
-	var rows []CompanyLastApplied
+// AppliedJobs lists the user's applications. Jobs still at new, viewed or shortlisted
+// were never applied to and are left out. Rejected jobs that predate applied_at have
+// none, so created_at stands in for it; the two fall on the same day for jobs that
+// have both.
+func (r *DiscoveredJobRepository) AppliedJobs(userID string) ([]AppliedJob, error) {
+	var rows []AppliedJob
 	if err := r.db.Model(&domain.Job{}).
-		Select("company_name, MAX(COALESCE(applied_at, created_at)) AS last_applied_at").
+		Select("company_name, COALESCE(applied_at, created_at) AS applied_at, rejected_at").
 		Where("user_id = ? AND company_name <> '' AND status NOT IN ?", userID, []domain.JobStatus{
 			domain.StatusNew, domain.StatusViewed, domain.StatusShortlisted,
 		}).
-		Group("company_name").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

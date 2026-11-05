@@ -71,6 +71,9 @@ type DiscoveredJob struct {
 	// LastAppliedAt is when the user last applied at this company, if ever. Also
 	// computed on read, so it follows applications made after the scrape.
 	LastAppliedAt *time.Time `json:"last_applied_at" gorm:"-"`
+	// LastRejectedAt is when that most recent application was rejected, if it was.
+	// Nil when it is still live, even if an earlier one at this company was rejected.
+	LastRejectedAt *time.Time `json:"last_rejected_at" gorm:"-"`
 }
 
 func (d *DiscoveredJob) BeforeCreate(tx *gorm.DB) error {
