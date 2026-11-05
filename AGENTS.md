@@ -81,7 +81,7 @@ React Frontend → Go Backend API → MCP Server → JobSpy (multi-site job sear
 
 `daily-scrape/` searches LinkedIn, Seek and Indeed each morning with JobSpy, run in-process
 from the `jobspy-mcp-server` fork (pinned by `JOBSPY_REF` in its Dockerfile; bump it with
-the submodule), and POSTs the results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
+the submodule), plus a worldwide remote search for niche terms that goes straight to LinkedIn, and POSTs the results to `/api/discovered-jobs`, which surfaces them on the frontend's **Discovered**
 page (`/discovered`). It runs as the k3s CronJob `board-scrape` at 09:00 Australia/Melbourne (manifest lives in the
 `raspi` repo, `k8s-services/job-tracker/09-cronjob-board-scrape.yaml`); the image is
 built by the same `docker.yml` matrix as the other services, as

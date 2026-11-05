@@ -17,6 +17,10 @@
   ],
   "location": "Melbourne, Victoria, Australia",
   "remote_location": "Australia",
+  "worldwide_searches": [
+    { "term": "Elixir", "keywords": ["Elixir software engineer", "Elixir Phoenix", "Elixir developer"] }
+  ],
+  "niche_role_title": "(engineer|developer|programmer|elixir)",
   "hours_old": 24,
   "results_per_search": 100,
   "country_indeed": "australia",
