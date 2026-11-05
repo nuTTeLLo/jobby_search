@@ -94,8 +94,8 @@ func TestLatestApplications(t *testing.T) {
 		{CompanyName: "Acme Pty Ltd", AppliedAt: day(1)},
 		{CompanyName: "Acme", AppliedAt: day(10), RejectedAt: &rejected},
 		// Rejected, then applied again: the live application wins.
-		{CompanyName: "Globex", AppliedAt: day(1), RejectedAt: &rejected},
 		{CompanyName: "Globex", AppliedAt: day(10)},
+		{CompanyName: "Globex", AppliedAt: day(1), RejectedAt: &rejected},
 		// No usable company name.
 		{CompanyName: "!!!", AppliedAt: day(1)},
 	})

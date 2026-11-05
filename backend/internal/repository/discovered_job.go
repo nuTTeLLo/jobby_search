@@ -142,15 +142,16 @@ type AppliedJob struct {
 	RejectedAt  *time.Time
 }
 
-// AppliedJobs lists the user's applications. Jobs still at new, viewed or shortlisted
-// were never applied to and are left out. Rejected jobs that predate applied_at have
+// AppliedJobs lists the user's applications. Jobs at new, viewed or shortlisted are
+// left out unless applied_at shows they were applied to before reaching that status,
+// such as an application later moved to shortlisted. Rejected jobs that predate applied_at have
 // none, so created_at stands in for it; the two fall on the same day for jobs that
 // have both.
 func (r *DiscoveredJobRepository) AppliedJobs(userID string) ([]AppliedJob, error) {
 	var rows []AppliedJob
 	if err := r.db.Model(&domain.Job{}).
 		Select("company_name, COALESCE(applied_at, created_at) AS applied_at, rejected_at").
-		Where("user_id = ? AND company_name <> '' AND status NOT IN ?", userID, []domain.JobStatus{
+		Where("user_id = ? AND company_name <> '' AND (applied_at IS NOT NULL OR status NOT IN ?)", userID, []domain.JobStatus{
 			domain.StatusNew, domain.StatusViewed, domain.StatusShortlisted,
 		}).
 		Scan(&rows).Error; err != nil {

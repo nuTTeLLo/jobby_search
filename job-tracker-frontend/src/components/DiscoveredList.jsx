@@ -45,11 +45,15 @@ const FIT_FIELDS = [
 // orders postings within each tier.
 const isEasyApply = (job) => job.apply_type === 'easy_apply';
 
+// applied_before is only written when a posting is scraped; last_applied_at is computed
+// on every read, so it also covers an application made since the last scrape.
+const hasAppliedBefore = (job) => job.applied_before || Boolean(job.last_applied_at);
+
 const TIERS = [
   {
     key: 'applied_before',
     label: 'Applied here before',
-    match: (job) => job.applied_before,
+    match: hasAppliedBefore,
     sortWithin: (a, b) => isEasyApply(a) - isEasyApply(b) || byFit(a, b),
   },
   { key: 'new', label: 'New application', match: (job) => !isEasyApply(job), sortWithin: byFit },
@@ -331,7 +335,7 @@ export default function DiscoveredList({ jobs, onDismiss, loading, hideLowFit = 
                         <span style={{ ...styles.badge, backgroundColor: badge.color }}>
                           {badge.label}
                         </span>
-                        {job.applied_before && (
+                        {hasAppliedBefore(job) && (
                           <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
                             {job.last_applied_at
                               ? `Last Applied ${formatDateWithAge(job.last_applied_at)}`
@@ -432,6 +436,8 @@ const styles = {
     fontWeight: 600,
     textDecoration: 'none',
     fontSize: '15px',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   subline: {
     color: '#6c757d',
