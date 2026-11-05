@@ -10,7 +10,7 @@ WORKDIR /app
 # JobSpy from the jobspy-mcp-server fork, which adds the Seek scraper and apply_type.
 # Pinned to a commit so a fork change cannot silently alter the scrape; bump it
 # together with the jobspy-mcp-server submodule pointer.
-ARG JOBSPY_REF=723c0fbf8dc2c48e6be46c36b2ef24a8d2a681e2
+ARG JOBSPY_REF=77bcd4335dbb26e1f8709887bc153046daad37f0
 ADD https://github.com/nuTTeLLo/jobspy-mcp-server.git#${JOBSPY_REF}:jobspy /opt/jobspy
 RUN pip install --no-cache-dir -r /opt/jobspy/requirements.txt "pyjwt==2.*"
 ENV PYTHONPATH=/opt/jobspy
