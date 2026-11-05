@@ -44,7 +44,10 @@ type Job struct {
 	// alone afterwards, so the archive sweep measures time since the
 	// application rather than time since the last edit. Null for jobs never
 	// applied to.
-	AppliedAt   *time.Time   `json:"applied_at"`
+	AppliedAt *time.Time `json:"applied_at"`
+	// RejectedAt is when the job last became "rejected", and is cleared if it
+	// moves on to another status.
+	RejectedAt  *time.Time   `json:"rejected_at"`
 	Attachments []Attachment `json:"attachments" gorm:"foreignKey:JobID;constraint:OnDelete:CASCADE"`
 	// Paired with UserID in idx_jobs_user_created: every list query filters by
 	// user and orders by created_at.

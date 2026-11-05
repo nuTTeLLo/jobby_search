@@ -132,26 +132,34 @@ func (s *DiscoveredJobService) GetRecent(userID string, includeDismissed bool) (
 	if err != nil {
 		return nil, err
 	}
-	applied, err := s.repo.LastAppliedByCompany(userID)
+	applied, err := s.repo.AppliedJobs(userID)
 	if err != nil {
-		return nil, fmt.Errorf("load last applied dates: %w", err)
+		return nil, fmt.Errorf("load applications: %w", err)
 	}
-	// Several spellings of a company can normalize to one; keep the latest date.
-	lastApplied := make(map[string]time.Time, len(applied))
-	for _, row := range applied {
-		key := normalizeCompany(row.CompanyName)
-		if key != "" && row.LastAppliedAt.After(lastApplied[key]) {
-			lastApplied[key] = row.LastAppliedAt
-		}
-	}
+	latest := latestApplications(applied)
 
 	for i := range jobs {
 		jobs[i].MatchKey = matchKey(&jobs[i])
-		if at, ok := lastApplied[normalizeCompany(jobs[i].CompanyName)]; ok {
+		if app, ok := latest[normalizeCompany(jobs[i].CompanyName)]; ok {
+			at := app.AppliedAt
 			jobs[i].LastAppliedAt = &at
+			jobs[i].LastRejectedAt = app.RejectedAt
 		}
 	}
 	return jobs, nil
+}
+
+// latestApplications keeps the most recent application per normalized company, since
+// several spellings of a company can normalize to one.
+func latestApplications(applied []repository.AppliedJob) map[string]repository.AppliedJob {
+	latest := make(map[string]repository.AppliedJob, len(applied))
+	for _, app := range applied {
+		key := normalizeCompany(app.CompanyName)
+		if key != "" && app.AppliedAt.After(latest[key].AppliedAt) {
+			latest[key] = app
+		}
+	}
+	return latest
 }
 
 // Unscored lists the postings the fit sweep should score: never scored, or scored

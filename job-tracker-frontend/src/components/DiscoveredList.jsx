@@ -45,11 +45,15 @@ const FIT_FIELDS = [
 // orders postings within each tier.
 const isEasyApply = (job) => job.apply_type === 'easy_apply';
 
+// applied_before is only written when a posting is scraped; last_applied_at is computed
+// on every read, so it also covers an application made since the last scrape.
+const hasAppliedBefore = (job) => job.applied_before || Boolean(job.last_applied_at);
+
 const TIERS = [
   {
     key: 'applied_before',
     label: 'Applied here before',
-    match: (job) => job.applied_before,
+    match: hasAppliedBefore,
     sortWithin: (a, b) => isEasyApply(a) - isEasyApply(b) || byFit(a, b),
   },
   { key: 'new', label: 'New application', match: (job) => !isEasyApply(job), sortWithin: byFit },
@@ -170,7 +174,7 @@ function formatDay(day) {
   return formatted;
 }
 
-function formatAppliedDate(timestamp) {
+function formatDateWithAge(timestamp) {
   const date = new Date(timestamp);
   const formatted = date.toLocaleDateString(undefined, {
     day: 'numeric',
@@ -178,7 +182,7 @@ function formatAppliedDate(timestamp) {
     year: 'numeric',
   });
 
-  // Whole calendar days, so an application yesterday evening reads "1 day". Counted
+  // Whole calendar days, so yesterday evening reads "1 day". Counted
   // from local date parts, so a daylight-saving change cannot skew the difference.
   const dayNumber = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
   const days = dayNumber(new Date()) - dayNumber(date);
@@ -254,7 +258,7 @@ export default function DiscoveredList({ jobs, onDismiss, loading, hideLowFit = 
                 const fit = FIT_BADGES[job.fit_score];
                 return (
                   <div key={job.id} style={styles.row}>
-                    <div style={styles.rowMain}>
+                    <div style={styles.titleRow}>
                       <a
                         href={job.job_url}
                         target="_blank"
@@ -263,70 +267,6 @@ export default function DiscoveredList({ jobs, onDismiss, loading, hideLowFit = 
                       >
                         {job.job_title}
                       </a>
-                      <div style={styles.subline}>
-                        {job.company_name}
-                        {job.location ? ` · ${job.location}` : ''}
-                      </div>
-                      {fit && (
-                        <div style={styles.fitBlock}>
-                          {job.fit_summary && <div style={styles.fitSummary}>{job.fit_summary}</div>}
-                          {job.fit_flags?.length > 0 && (
-                            <div style={styles.fitFlags}>
-                              {job.fit_flags.map((flag) => (
-                                <span key={flag} style={styles.fitFlag}>⚠ {flag}</span>
-                              ))}
-                            </div>
-                          )}
-                          <FitDetails job={job} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={styles.badges}>
-                      {fit && (
-                        <span
-                          style={{ ...styles.badge, backgroundColor: fit.color }}
-                          title={job.fit_model ? `Scored by ${job.fit_model}` : undefined}
-                        >
-                          {fit.label} · {job.fit_score}/5
-                        </span>
-                      )}
-                      {boardLinks(job.postings).map((posting) => {
-                        const source = sourceBadge(posting.source);
-                        return (
-                          <a
-                            key={posting.id}
-                            href={posting.job_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ ...styles.badge, ...styles.link, backgroundColor: source.color }}
-                            title={`Open on ${source.label}`}
-                          >
-                            {source.label} ↗
-                          </a>
-                        );
-                      })}
-                      {job.apply_url && (
-                        <a
-                          href={job.apply_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={styles.employerLink}
-                          title="Apply on the employer's own site"
-                        >
-                          Employer site ↗
-                        </a>
-                      )}
-                      <span style={{ ...styles.badge, backgroundColor: badge.color }}>
-                        {badge.label}
-                      </span>
-                      {job.applied_before && (
-                        <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
-                          {job.last_applied_at
-                            ? `Last Applied ${formatAppliedDate(job.last_applied_at)}`
-                            : 'Applied here before'}
-                        </span>
-                      )}
                       <button
                         onClick={() => onDismiss(job.ids)}
                         style={styles.dismissBtn}
@@ -334,6 +274,80 @@ export default function DiscoveredList({ jobs, onDismiss, loading, hideLowFit = 
                       >
                         Dismiss
                       </button>
+                    </div>
+
+                    <div style={styles.rowBody}>
+                      <div style={styles.rowMain}>
+                        <div style={styles.subline}>
+                          {job.company_name}
+                          {job.location ? ` · ${job.location}` : ''}
+                        </div>
+                        {fit && (
+                          <div style={styles.fitBlock}>
+                            {job.fit_summary && <div style={styles.fitSummary}>{job.fit_summary}</div>}
+                            {job.fit_flags?.length > 0 && (
+                              <div style={styles.fitFlags}>
+                                {job.fit_flags.map((flag) => (
+                                  <span key={flag} style={styles.fitFlag}>⚠ {flag}</span>
+                                ))}
+                              </div>
+                            )}
+                            <FitDetails job={job} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={styles.badges}>
+                        {fit && (
+                          <span
+                            style={{ ...styles.badge, backgroundColor: fit.color }}
+                            title={job.fit_model ? `Scored by ${job.fit_model}` : undefined}
+                          >
+                            {fit.label} · {job.fit_score}/5
+                          </span>
+                        )}
+                        {boardLinks(job.postings).map((posting) => {
+                          const source = sourceBadge(posting.source);
+                          return (
+                            <a
+                              key={posting.id}
+                              href={posting.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ ...styles.badge, ...styles.link, backgroundColor: source.color }}
+                              title={`Open on ${source.label}`}
+                            >
+                              {source.label} ↗
+                            </a>
+                          );
+                        })}
+                        {job.apply_url && (
+                          <a
+                            href={job.apply_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={styles.employerLink}
+                            title="Apply on the employer's own site"
+                          >
+                            Employer site ↗
+                          </a>
+                        )}
+                        <span style={{ ...styles.badge, backgroundColor: badge.color }}>
+                          {badge.label}
+                        </span>
+                        {hasAppliedBefore(job) && (
+                          <span style={{ ...styles.badge, backgroundColor: '#fd7e14' }}>
+                            {job.last_applied_at
+                              ? `Last Applied ${formatDateWithAge(job.last_applied_at)}`
+                              : 'Applied here before'}
+                          </span>
+                        )}
+                        {job.last_rejected_at && (
+                          <span style={{ ...styles.badge, backgroundColor: '#dc3545' }}>
+                            Rejected {formatDateWithAge(job.last_rejected_at)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -392,15 +406,26 @@ const styles = {
     letterSpacing: 0,
   },
   row: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '12px 16px',
+    marginBottom: '6px',
+  },
+  // The title wraps beside the button rather than under it, so Dismiss always lands
+  // in the top right corner of the card.
+  titleRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '16px',
+  },
+  rowBody: {
+    marginTop: '4px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: '16px',
     flexWrap: 'wrap',
-    backgroundColor: 'white',
-    borderRadius: '8px',
-    padding: '12px 16px',
-    marginBottom: '6px',
   },
   rowMain: {
     minWidth: '260px',
@@ -411,6 +436,8 @@ const styles = {
     fontWeight: 600,
     textDecoration: 'none',
     fontSize: '15px',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   subline: {
     color: '#6c757d',
@@ -418,7 +445,7 @@ const styles = {
     marginTop: '2px',
   },
   // Pinned to the right edge, even when the row wraps it onto its own line or its
-  // items wrap among themselves, so Dismiss always lands in the same spot.
+  // items wrap among themselves.
   badges: {
     display: 'flex',
     alignItems: 'center',
@@ -497,5 +524,6 @@ const styles = {
     padding: '4px 12px',
     fontSize: '12px',
     cursor: 'pointer',
+    flexShrink: 0,
   },
 };
