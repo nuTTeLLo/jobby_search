@@ -54,9 +54,22 @@ by matching the company against your tracked jobs.
 `config.json` holds the search — boards, terms, location, `hours_old`,
 `results_per_search`, and the title regexes — and is baked into the image.
 `remote_search_terms` are also searched as remote roles across `remote_location`
-(currently Elixir, across Australia); those only keep postings whose title names the
-term, because LinkedIn pads a niche search that has no matches with unrelated postings
-from any city. A single
+(currently Elixir, across Australia). `worldwide_searches` run as remote roles across
+every country, on LinkedIn only: Seek is Australian and Indeed searches one country at a
+time. These go straight to LinkedIn's guest search, because a worldwide search needs its
+`geoId`, which JobSpy cannot send; the location text "Worldwide" resolves to places in
+Japan. Each entry gives the `term` a posting must name and the `keywords` to ask for.
+Plain "Elixir" works poorly there, as it mostly matches companies whose names start with
+"El", so the keywords are fuller phrases.
+
+Boards pad these niche searches with unrelated postings, so a remote or worldwide result
+is kept only if it names the term as a whole word, in its title or else in its
+description. Only titles matching `niche_role_title` get a description check, since that
+costs a request per posting on LinkedIn and Seek. LinkedIn's remote filter is loose and a
+role's location is often a city, so some kept roles may not be fully remote or open to
+Australia; the fit sweep is what marks those down.
+
+A single
 search is abandoned after `search_timeout_seconds` (default 300), with the rest of that
 board skipped, so one stuck board cannot hold up the others; JobSpy only times out
 individual requests. Deployment
@@ -90,6 +103,8 @@ JWT_SECRET=<dev secret> \
 
 `--dry-run` scrapes and prints the digest without posting. Other flags: `--hours N`,
 `--sites seek,indeed`, `--config PATH`, `--verbose` (per-search counts on stderr).
+
+Tests: `../.venv/bin/python -m unittest test_board_scrape`, with the same `PYTHONPATH`.
 
 Dependencies are JobSpy's (installed from the fork's `jobspy/requirements.txt`, at the
 commit pinned by `JOBSPY_REF` in the Dockerfile) plus PyJWT.

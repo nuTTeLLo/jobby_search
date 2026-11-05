@@ -31,6 +31,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import namedtuple
 from datetime import datetime, timedelta
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +40,12 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 LINKEDIN_POSTING_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting"
+LINKEDIN_SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+# LinkedIn's id for "Worldwide". The location text does not work: "Worldwide" resolves
+# to places in Japan, and no location at all means the United States.
+LINKEDIN_WORLDWIDE_GEO_ID = "92000000"
+LINKEDIN_REMOTE_FILTER = "2"
+LINKEDIN_PAGE_SIZE = 10
 SEEK_GRAPHQL_URL = "https://au.seek.com/graphql"
 
 # JobSpy prefixes its ids per board. LinkedIn rows keep the bare posting id so they
@@ -59,20 +66,38 @@ APPLY_UNKNOWN = "unknown"
 DEFAULT_SEARCH_TIMEOUT = 300
 
 
-def planned_searches(cfg):
-    """Every (term, remote) pair to run on each board.
+# Where a search looks. The remote and worldwide scopes are for niches too small to
+# find locally, and keep a posting only if it names the term (see matches_niche).
+SCOPE_LOCAL = "local"
+SCOPE_REMOTE = "remote"
+SCOPE_WORLDWIDE = "worldwide"
 
-    search_terms run in cfg["location"]; remote_search_terms run as remote roles
-    across cfg["remote_location"], for niches too small to find locally, and only
-    keep postings whose title names the term.
+# term is what a niche posting must name; keywords is what the board is asked for.
+Search = namedtuple("Search", "term keywords scope")
+
+
+def planned_searches(cfg, site=None):
+    """Every search to run on one board, or on any board when site is None.
+
+    search_terms run in cfg["location"] and remote_search_terms run as remote roles
+    across cfg["remote_location"], on every board. worldwide_searches run on LinkedIn
+    only: Seek is Australian, and Indeed searches one country at a time.
     """
-    return [(term, False) for term in cfg["search_terms"]] + [
-        (term, True) for term in cfg.get("remote_search_terms", [])
-    ]
+    searches = [Search(term, term, SCOPE_LOCAL) for term in cfg["search_terms"]]
+    searches += [Search(term, term, SCOPE_REMOTE) for term in cfg.get("remote_search_terms", [])]
+    if site in (None, "linkedin"):
+        searches += [
+            Search(entry["term"], keywords, SCOPE_WORLDWIDE)
+            for entry in cfg.get("worldwide_searches", [])
+            for keywords in entry["keywords"]
+        ]
+    return searches
 
 
-def search_label(term, remote):
-    return "%s (remote)" % term if remote else term
+def search_label(search):
+    if search.scope == SCOPE_LOCAL:
+        return search.keywords
+    return "%s (%s)" % (search.keywords, search.scope)
 
 
 class SearchTimedOut(Exception):
@@ -155,7 +180,7 @@ def request_with_retry(url, label, warnings, **kwargs):
             moved = " (redirects to %s)" % location if location else ""
             warnings.append("%s failed: HTTP %s%s" % (label, exc.code, moved))
             return None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
             if attempt < 2:
                 time.sleep(5 * (2**attempt))
                 continue
@@ -164,15 +189,65 @@ def request_with_retry(url, label, warnings, **kwargs):
     return None
 
 
-def search_board(cfg, site, term, remote, warnings):
-    """One JobSpy search for one term on one board.
+def parse_linkedin_cards(html):
+    """A LinkedIn guest search page as rows shaped like JobSpy's."""
+    from bs4 import BeautifulSoup  # a JobSpy dependency
 
-    Boards are searched one at a time so a board that errors or throttles costs
-    only its own results, and so each gets its own date window (see seek below).
-    Returns JobSpy's rows as dicts, with missing values as None.
+    def text(card, css_class):
+        element = card.find(class_=css_class)
+        return element.get_text(strip=True) if element else None
+
+    rows = []
+    for card in BeautifulSoup(html, "html.parser").find_all("div", class_="base-search-card"):
+        posting_id = (card.get("data-entity-urn") or "").rpartition(":")[2]
+        if not posting_id:
+            continue
+        posted = card.find("time")
+        rows.append({
+            "id": SITES["linkedin"]["jobspy_prefix"] + posting_id,
+            "title": text(card, "base-search-card__title"),
+            "company": text(card, "base-search-card__subtitle"),
+            "location": text(card, "job-search-card__location"),
+            "job_url": "https://www.linkedin.com/jobs/view/%s" % posting_id,
+            "date_posted": posted.get("datetime") if posted else None,
+        })
+    return rows
+
+
+def search_linkedin_worldwide(cfg, search, warnings):
+    """A remote LinkedIn search across every country.
+
+    Asks LinkedIn directly because this needs its geoId, which JobSpy cannot send.
     """
+    wanted = cfg.get("results_per_search", 100)
+    rows = []
+    for start in range(0, wanted, LINKEDIN_PAGE_SIZE):
+        query = urllib.parse.urlencode({
+            "keywords": search.keywords,
+            "geoId": LINKEDIN_WORLDWIDE_GEO_ID,
+            "f_WT": LINKEDIN_REMOTE_FILTER,
+            "f_TPR": "r%d" % (cfg["hours_old"] * 3600),
+            "start": start,
+        })
+        body = request_with_retry(
+            "%s?%s" % (LINKEDIN_SEARCH_URL, query),
+            "linkedin '%s'" % search_label(search),
+            warnings,
+            headers={"Accept": "text/html,application/xhtml+xml"},
+        )
+        page = parse_linkedin_cards(body) if body else []
+        if not page:
+            break
+        rows += page
+        time.sleep(random.uniform(3.0, 6.0))
+    return rows[:wanted]
+
+
+def search_jobspy(cfg, site, search):
+    """One JobSpy search on one board, as dicts with missing values as None."""
     from jobspy import scrape_jobs  # imported lazily: pandas is slow to load
 
+    remote = search.scope == SCOPE_REMOTE
     hours = cfg["hours_old"]
     if site == "seek":
         # Seek's date filter counts calendar days, and one day means "listed today",
@@ -185,43 +260,59 @@ def search_board(cfg, site, term, remote, warnings):
         # within_window, so remote postings are not crowded out by on-site ones.
         hours = None
 
-    label = "%s '%s'" % (site, search_label(term, remote))
+    frame = scrape_jobs(
+        site_name=site,
+        search_term=search.keywords,
+        location=cfg["remote_location"] if remote else cfg["location"],
+        is_remote=remote,
+        hours_old=hours,
+        results_wanted=cfg.get("results_per_search", 100),
+        country_indeed=cfg.get("country_indeed", "australia"),
+        verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
+    )
+    if frame is None or frame.empty:
+        return []
+    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+
+
+def search_board(cfg, site, search, warnings):
+    """One search on one board, within the search deadline.
+
+    Boards are searched one at a time so a board that errors or throttles costs
+    only its own results, and so each gets its own date window (see search_jobspy).
+    Returns rows as dicts in JobSpy's shape.
+    """
+    label = "%s '%s'" % (site, search_label(search))
 
     # Run the search on a daemon thread so it can be abandoned at the deadline: a
     # Python thread cannot be killed, but a daemon one does not stop the process
-    # exiting once the rest of the run is done.
+    # exiting once the rest of the run is done. Its warnings stay separate until it
+    # finishes, so an abandoned search cannot add to them later.
     outcome = {}
+    search_warnings = []
 
     def run():
         try:
-            outcome["frame"] = scrape_jobs(
-                site_name=site,
-                search_term=term,
-                location=cfg["remote_location"] if remote else cfg["location"],
-                is_remote=remote,
-                hours_old=hours,
-                results_wanted=cfg.get("results_per_search", 100),
-                country_indeed=cfg.get("country_indeed", "australia"),
-                verbose=1,  # JobSpy's own warnings and errors, e.g. a board's HTTP 403
-            )
+            if search.scope == SCOPE_WORLDWIDE:
+                outcome["rows"] = search_linkedin_worldwide(cfg, search, search_warnings)
+            else:
+                outcome["rows"] = search_jobspy(cfg, site, search)
         except Exception as exc:  # noqa: BLE001 - one board's failure must not end the run
             outcome["error"] = exc
 
     timeout = cfg.get("search_timeout_seconds", DEFAULT_SEARCH_TIMEOUT)
-    worker = threading.Thread(target=run, name="jobspy-%s" % site, daemon=True)
+    worker = threading.Thread(target=run, name="search-%s" % site, daemon=True)
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
         raise SearchTimedOut("%s ran past %ds" % (label, timeout))
 
+    warnings.extend(search_warnings)
     if "error" in outcome:
         exc = outcome["error"]
         warnings.append("%s failed: %s: %s" % (label, type(exc).__name__, exc))
         return []
-    frame = outcome.get("frame")
-    if frame is None or frame.empty:
-        return []
-    return frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+    return outcome["rows"]
 
 
 def html_to_text(html):
@@ -307,6 +398,17 @@ def board_id(site, jobspy_id):
     return jobspy_id[len(prefix):] if jobspy_id.startswith(prefix) else jobspy_id
 
 
+def fetch_details(site, posting_id, result, warnings, cache):
+    """posting_details, at most once per posting: the niche filter may already have
+    needed it, and the same posting can come back from several searches."""
+    key = (site, posting_id)
+    if key not in cache:
+        cache[key] = posting_details(site, posting_id, result, warnings)
+        if site != "indeed":  # Indeed's are already in hand, so nothing was requested
+            time.sleep(random.uniform(1.5, 3.0))
+    return cache[key]
+
+
 def posting_details(site, posting_id, result, warnings):
     """(apply type, description) for one posting."""
     if site == "linkedin":
@@ -334,6 +436,24 @@ def within_window(posted, hours_old):
     days = max(1, -(-hours_old // 24))
     cutoff = (datetime.now().astimezone() - timedelta(days=days)).date()
     return posted_date >= cutoff
+
+
+def names_term(term, text):
+    """Whole words only, so the company Elixirr Digital does not count as Elixir."""
+    return bool(text) and re.search(r"\b%s\b" % re.escape(term), text, re.I) is not None
+
+
+def matches_niche(term, title, role_re, get_description):
+    """Whether a remote or worldwide result is really about the niche.
+
+    Boards pad a niche search with loosely related postings, so a posting has to name
+    the term, in its title or else in its description. A description costs a request
+    per posting on LinkedIn and Seek, so only titles that look like the right kind of
+    job get one.
+    """
+    if names_term(term, title):
+        return True
+    return role_re.search(title) is not None and names_term(term, get_description())
 
 
 # -------------------------------------------------------------------------- tracker
@@ -420,12 +540,12 @@ def format_digest(jobs, counts, warnings, cfg, run_time):
             ", ".join(cfg["sites"]),
         ),
         "",
-        "  %-28s %s" % ("", "  ".join("%9s" % site for site in cfg["sites"])),
+        "  %-40s %s" % ("", "  ".join("%9s" % site for site in cfg["sites"])),
     ]
-    for term, remote in planned_searches(cfg):
-        label = search_label(term, remote)
+    for search in planned_searches(cfg):
+        label = search_label(search)
         lines.append(
-            "  %-28s %s"
+            "  %-40s %s"
             % (label, "  ".join("%9d" % counts.get((site, label), 0) for site in cfg["sites"]))
         )
     lines.append("")
@@ -600,16 +720,20 @@ def main():
     run_time = datetime.now().astimezone()
     warnings = []
     include_re = re.compile(cfg["title_include"], re.I)
+    # Niche searches look past title_include, since a role that only names the term in
+    # its description is often just "Engineer" or "Developer".
+    niche_role_re = re.compile(cfg.get("niche_role_title", cfg["title_include"]), re.I)
     exclude_re = re.compile(cfg["title_exclude"], re.I) if cfg.get("title_exclude") else None
 
     # 1. search every term on every board
     counts = {}
     candidates = {}
+    details = {}
     for site in cfg["sites"]:
-        for term, remote in planned_searches(cfg):
-            label = search_label(term, remote)
+        for search in planned_searches(cfg, site):
+            label = search_label(search)
             try:
-                results = search_board(cfg, site, term, remote, warnings)
+                results = search_board(cfg, site, search, warnings)
             except SearchTimedOut as exc:
                 warnings.append("%s; skipping %s's remaining searches." % (exc, site))
                 break
@@ -622,16 +746,19 @@ def main():
                 title = result.get("title") or ""
                 if not posting_id or not title or (site, posting_id) in candidates:
                     continue
-                if not include_re.search(title):
-                    continue
-                # With no real matches, LinkedIn pads a niche search with loosely
-                # related postings from any city, which the role filter above would
-                # let through. A remote search is only for its own niche.
-                if remote and term.lower() not in title.lower():
+                if search.scope == SCOPE_LOCAL and not include_re.search(title):
                     continue
                 if exclude_re and exclude_re.search(title):
                     continue
                 if not within_window(str(result.get("date_posted") or ""), cfg["hours_old"]):
+                    continue
+                # Last, because it can cost a request.
+                if search.scope != SCOPE_LOCAL and not matches_niche(
+                    search.term,
+                    title,
+                    niche_role_re,
+                    lambda: fetch_details(site, posting_id, result, warnings, details)[1],
+                ):
                     continue
                 candidates[(site, posting_id)] = result
 
@@ -655,7 +782,7 @@ def main():
     # 2. classify how each survivor is applied to, and collect its description
     jobs = []
     for (site, posting_id), result in candidates.items():
-        apply_type, description = posting_details(site, posting_id, result, warnings)
+        apply_type, description = fetch_details(site, posting_id, result, warnings, details)
         jobs.append({
             "external_id": SITES[site]["external_prefix"] + posting_id,
             "job_title": result.get("title") or "",
@@ -668,8 +795,6 @@ def main():
             "apply_type": apply_type,
             "description": description or "",
         })
-        if site != "indeed":
-            time.sleep(random.uniform(1.5, 3.0))
 
     jobs.sort(key=lambda j: (j["company_name"].lower(), j["job_title"].lower(), j["source"]))
 
