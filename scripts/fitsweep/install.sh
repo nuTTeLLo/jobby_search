@@ -31,6 +31,17 @@ EOF
     exit 1
 fi
 
+# fitsweep exits on any of these being blank, so refuse to install a job that
+# would fail every run. Only reads the file; never changes it.
+blank=()
+for name in TRACKER_URL TRACKER_USER_ID TRACKER_EMAIL; do
+    grep -Eq "^${name}=.+" "$config" || blank+=("$name")
+done
+if [ ${#blank[@]} -gt 0 ]; then
+    echo "Set ${blank[*]} in $config, then run this again." >&2
+    exit 1
+fi
+
 echo "Building fitsweep..."
 (cd "$repo/backend" && go build -o "$HOME/.local/bin/fitsweep" ./cmd/fitsweep)
 install -m 755 "$repo/scripts/fitsweep/run.sh" "$HOME/.local/bin/jobsearch-fitsweep"
