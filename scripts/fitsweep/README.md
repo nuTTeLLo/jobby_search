@@ -29,8 +29,9 @@ failures in a row.
 ## Install
 
 1. Fill in `~/.config/jobsearch/fitsweep.env`: `install.sh` creates it from a
-   template the first time. The account is the one in `My Job Search/.tracker.env`.
-   The file is read from `~/.config` so that the job never touches OneDrive.
+   template the first time: the tracker's URL and the account to run as.
+   The file is read from `~/.config` so the job never touches a synced or
+   network folder, which would trigger the macOS network-volume prompt.
 2. Run `scripts/fitsweep/install.sh`. It builds the sweep, installs the wrapper as
    `~/.local/bin/jobsearch-fitsweep`, and loads the LaunchAgent
    `com.jobbysearch.fitsweep`.

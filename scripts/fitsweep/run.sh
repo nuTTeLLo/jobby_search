@@ -5,8 +5,8 @@
 # JWT_SECRET from the 1Password Environment behind backend/.env through the
 # JOBSEARCH_OP_TOKEN service account, the same route the rejection sweeps use.
 # backend/.env itself is a 1Password pipe that is empty while the app is locked,
-# so it is never read here. Nothing here touches the OneDrive mount, which keeps
-# the job clear of the macOS network-volume prompt.
+# so it is never read here. Nothing here touches a synced or network folder,
+# which keeps the job clear of the macOS network-volume prompt.
 #
 # Installed as ~/.local/bin/jobsearch-fitsweep by install.sh. Extra arguments go
 # to the sweep, e.g. `jobsearch-fitsweep --dry-run`.

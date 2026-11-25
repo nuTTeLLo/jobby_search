@@ -128,8 +128,8 @@ bun run dev
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_HOST` | kickapoo.tailee323f.ts.net | PostgreSQL host |
-| `DB_PORT` | 30432 | PostgreSQL port |
+| `DB_HOST` | localhost | PostgreSQL host |
+| `DB_PORT` | 5432 | PostgreSQL port |
 | `DB_USER` | jobuser | Database user |
 | `DB_PASSWORD` | jobpass | Database password |
 | `DB_NAME` | jobtracker | Database name |

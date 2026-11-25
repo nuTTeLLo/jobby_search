@@ -27,7 +27,9 @@ run = [
 ]
 
 # Ports are 8081 / 5173 / 9423 plus DEV_PORT_OFFSET, so a secondary jj workspace runs
-# alongside the default one.
+# alongside the default one. To open the frontend from another machine, set
+# DEV_HOST to this machine's hostname in a gitignored mise.local.toml
+# ([env] DEV_HOST = "..."); the backend then also accepts that origin.
 [tasks.backend]
 description = "Run Go API on :8081 (the port frontend dev expects)"
 dir = "backend"
@@ -35,7 +37,7 @@ run = """
 off=${DEV_PORT_OFFSET:-0}
 SERVER_PORT=$((8081 + off)) \
 MCP_SERVER_URL=http://localhost:$((9423 + off)) \
-ALLOWED_ORIGINS=http://localhost:$((5173 + off)),http://sprite-studio.tailee323f.ts.net:$((5173 + off)) \
+ALLOWED_ORIGINS=http://localhost:$((5173 + off))${DEV_HOST:+,http://$DEV_HOST:$((5173 + off))} \
 PUBLIC_BASE_URL=http://localhost:$((8081 + off)) \
 FRONTEND_URL=http://localhost:$((5173 + off)) \
   go run ./cmd/server/

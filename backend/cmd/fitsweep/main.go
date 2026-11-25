@@ -6,7 +6,7 @@
 // It runs there rather than in the cluster because the node has no memory to spare
 // for the CLI; see AGENTS.md. Everything it needs comes from the environment:
 //
-//	TRACKER_URL                       tracker base URL (default the tailnet one)
+//	TRACKER_URL                       tracker base URL
 //	TRACKER_USER_ID, TRACKER_EMAIL    the account to mint a token for
 //	JWT_SECRET                        the tracker's signing secret
 //	TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DISCOVERED_URL   optional summary
@@ -37,7 +37,6 @@ import (
 )
 
 const (
-	defaultTrackerURL = "https://job-tracker.tailee323f.ts.net"
 	// Past this many postings in one run, something upstream is wrong (a broken
 	// title filter), and scoring them all would eat the plan's usage limits.
 	defaultMaxPerRun = 100
@@ -66,7 +65,7 @@ type config struct {
 
 func loadConfig() (*config, error) {
 	cfg := &config{
-		trackerURL:    strings.TrimRight(envOr("TRACKER_URL", defaultTrackerURL), "/"),
+		trackerURL:    strings.TrimRight(os.Getenv("TRACKER_URL"), "/"),
 		userID:        os.Getenv("TRACKER_USER_ID"),
 		email:         os.Getenv("TRACKER_EMAIL"),
 		jwtSecret:     os.Getenv("JWT_SECRET"),
@@ -87,7 +86,8 @@ func loadConfig() (*config, error) {
 	}
 	var missing []string
 	for name, value := range map[string]string{
-		"TRACKER_USER_ID": cfg.userID, "TRACKER_EMAIL": cfg.email, "JWT_SECRET": cfg.jwtSecret,
+		"TRACKER_URL": cfg.trackerURL, "TRACKER_USER_ID": cfg.userID, "TRACKER_EMAIL": cfg.email,
+		"JWT_SECRET": cfg.jwtSecret,
 	} {
 		if value == "" {
 			missing = append(missing, name)

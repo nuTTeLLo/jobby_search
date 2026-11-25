@@ -18,16 +18,27 @@ if [ ! -f "$config" ]; then
     mkdir -p "$(dirname "$config")"
     cat > "$config" <<'EOF'
 # Settings for the fit sweep (scripts/fitsweep in jobby_search). Fill in, no quotes.
-# The account is the one in "My Job Search/.tracker.env".
+# TRACKER_URL is the tracker's base URL; DISCOVERED_URL its /discovered page.
 TRACKER_USER_ID=
 TRACKER_EMAIL=
-TRACKER_URL=https://job-tracker.tailee323f.ts.net
-DISCOVERED_URL=https://job-tracker.tailee323f.ts.net/discovered
+TRACKER_URL=
+DISCOVERED_URL=
 # The 1Password Environment behind backend/.env (holds JWT_SECRET).
 OP_ENVIRONMENT=
 EOF
     chmod 600 "$config"
     echo "Created $config - fill it in, then run this again."
+    exit 1
+fi
+
+# fitsweep exits on any of these being blank, so refuse to install a job that
+# would fail every run. Only reads the file; never changes it.
+blank=()
+for name in TRACKER_URL TRACKER_USER_ID TRACKER_EMAIL; do
+    grep -Eq "^${name}=.+" "$config" || blank+=("$name")
+done
+if [ ${#blank[@]} -gt 0 ]; then
+    echo "Set ${blank[*]} in $config, then run this again." >&2
     exit 1
 fi
 
