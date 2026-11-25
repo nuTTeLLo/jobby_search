@@ -140,7 +140,10 @@ def detect_source(url):
     # correct there, and the workflow's source-mismatch rule handles the rest.
     return "O"
 
-URL_RE = re.compile(r"https?://[^\s<>\"']+")
+# Control characters end the match too: a decoded --b64 argument or a live tab
+# URL could carry an ESC, which inside the bracketed paste could end the paste
+# early and type the rest into Claude as keystrokes.
+URL_RE = re.compile(r"https?://[^\s<>\"'\x00-\x1f\x7f]+")
 
 
 def extract_url(raw):
