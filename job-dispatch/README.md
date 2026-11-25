@@ -1,7 +1,8 @@
 # job-dispatch
 
 Send the job posting you're looking at straight into a free `Job-Apply-N` Claude
-session, from the macOS Share menu in any browser.
+session, from the macOS Share menu in any browser, or from the share sheet on an
+iPhone or iPad ([over SSH](#from-iphone-or-ipad)).
 
 Replaces copying the URL out of the browser and hand-typing the 4-line trigger
 message that the workflow in `~/Remotes/OneDrive/My Job Search/CLAUDE.md`
@@ -168,27 +169,43 @@ Shortcuts.app in about two minutes:
 1. New shortcut named **Send to Job-Apply**.
 2. In the shortcut's settings (ⓘ): tick **Use as Quick Action** → **Share Sheet**,
    and set **Receive** → **URLs**.
-3. **Choose from Menu** with four items — `Direct`, `Via recruiter`,
+3. **Text** containing `Shortcut Input`, then **Base64 Encode** that Text
+   (Mode **Encode**, Line Breaks **None**). Encode the Text, not `Shortcut
+   Input` directly: Base64 Encode takes files, and handed a URL it may
+   download the page and encode that instead.
+4. **Choose from Menu** with four items — `Direct`, `Via recruiter`,
    `Easy apply`, `Recruiter + Easy apply`. One menu rather than two yes/no
    prompts keeps it to a single tap.
-4. In each branch, a **Run Shell Script** action (Shell **zsh**, **Pass input as
-   arguments**), with the flags for that branch:
+5. In each branch, a **Run Shell Script** action (Shell **zsh**), with the
+   flags for that branch:
 
    ```
-   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" n n
+   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py --b64 <Base64 Encoded> n n
    ```
 
    `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
 
-   > **Insert `Shortcut Input` as a magic variable** — type the quotes, then pick
-   > it from the variable bar. Do **not** write `"$1"` here. Inside a menu branch
-   > an action's implicit input is the *menu's* output, so `"$1"` arrives as the
-   > menu label (`Direct`) rather than the URL. The magic variable binds to the
-   > original share-sheet input no matter where the action sits.
+   > **Insert `Base64 Encoded` as a magic variable, unquoted.** Never put
+   > `Shortcut Input` (or any other text variable) into the script itself.
+   > Shortcuts pastes a magic variable into the script as plain text before
+   > the shell parses it, and quotes don't stop that: a link to
+   > `https://x.invalid/$(touch${IFS}/tmp/pwned)` would run `touch` as you, and
+   > a `"` in the text ends the quoted argument. Base64 output is only
+   > `A-Z a-z 0-9 + / =`, which the shell passes through as data, and `--b64`
+   > decodes it in Python.
+   >
+   > The magic variable also binds to the right value wherever the action
+   > sits. Don't use `"$1"`: inside a menu branch an action's implicit input is
+   > the *menu's* output, so it would arrive as the label (`Direct`).
 
    Any POSIX shell works — the command uses no shell-specific syntax. Avoid the
-   nix `fish`/`nu` entries in the shell list, which don't use `$1`-style args.
-5. **Show Notification** with the Shell Script output.
+   nix `fish`/`nu` entries in the shell list.
+6. **Show Notification** with the Shell Script output.
+
+To check it, open a page whose URL contains `$(touch${IFS}/tmp/pwned)` in
+Zen (which has no live-tab lookup, so the share input is what gets used) and
+share it: the notification should show that literal URL, and `/tmp/pwned`
+must not exist.
 
 To snapshot it afterwards: export from Shortcuts.app (File → Export), then
 `shortcuts sign --mode anyone -i in.shortcut -o "Send to Job-Apply.shortcut"` so
@@ -254,30 +271,111 @@ The menu that asks recruiter/easy-apply can show the URL it's about to send, so
 a stale one is caught *before* it burns a session. Add one action ahead of the
 menu and point the menu's prompt at it:
 
-1. **Run Shell Script** as the first action (Shell `/bin/sh`, **Pass input as
-   arguments**), with `Shortcut Input` as the variable:
+1. After the Text and Base64 Encode actions, **Run Shell Script** (Shell
+   `/bin/sh`) with that `Base64 Encoded` as the variable:
 
    ```
-   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py "<Shortcut Input>" --resolve-only
+   /usr/bin/python3 /Users/<you>/dev/jobby_search/job-dispatch/dispatch.py --b64 <Base64 Encoded> --resolve-only
    ```
 
    `--resolve-only` prints the URL that *would* be dispatched -- live tab
    preferred, share input as fallback -- and exits. It writes no state, sends
    nothing, and doesn't trip the stale-repeat guard.
 
-2. In **Choose from Menu**, set the **Prompt** field to that action's
-   `Shell Script Result`.
+2. Encode that result the same way: **Text** containing `Shell Script
+   Result`, then a second **Base64 Encode**. The live tab's URL is just as
+   untrusted as the share input, since it is whatever page is open.
 
-3. In each of the four branches, replace `Shortcut Input` with the same
-   `Shell Script Result` and add `--no-live`:
+3. In **Choose from Menu**, set the **Prompt** field to the `Shell Script
+   Result` (the plain URL, for you to read).
+
+4. In each of the four branches, use the second `Base64 Encoded` and add
+   `--no-live`:
 
    ```
-   /usr/bin/python3 .../dispatch.py "<Shell Script Result>" n n --no-live
+   /usr/bin/python3 .../dispatch.py --b64 <Base64 Encoded> n n --no-live
    ```
 
-Step 3 is what makes it what-you-see-is-what-you-send. Without it the branches
+Step 4 is what makes it what-you-see-is-what-you-send. Without it the branches
 re-resolve the live tab, so switching tabs between reading the prompt and
 picking an option would dispatch a different URL than the one you just approved.
+
+## From iPhone or iPad
+
+iOS Shortcuts has no Run Shell Script, but it has **Run Script Over SSH**, so a
+phone or iPad shares the job to the Mac over Tailscale and the Mac runs
+`dispatch.py` exactly as before. The Mac stays the runner: it has to be awake,
+with Rex and its Job-Apply panes up, and the device needs Tailscale connected.
+
+```
+Share (Safari / LinkedIn / SEEK app on iOS)
+   └─> Shortcut "Send to Job-Apply (iOS)"
+         └─> Run Script Over SSH ──Tailscale──> Mac: dispatch.py ──> Job-Apply-N
+```
+
+Over SSH the script sees `SSH_CONNECTION` and adjusts by itself:
+
+- **No live-tab lookup** (as `--no-live`). The Mac's frontmost browser has
+  nothing to do with what the phone shared; reading it would send the wrong
+  job, or trip the stale-repeat guard. The iOS share sheet hands over the page
+  actually open, so the share input is trusted.
+- **No Mac notification** (as `--no-notify`). It would appear on the Mac,
+  where nobody is looking. The script's output becomes the phone's
+  notification instead, and failures are prefixed `Job dispatch failed:`.
+- **No stdin fallback.** The URL comes in on the command line, and an SSH
+  channel's stdin may never close, which would hang the dispatch.
+
+`ssh=True` on the `invoked` log line shows a dispatch came this way.
+
+Build it as a separate shortcut. Shortcuts syncs through iCloud, but the Mac
+one's Run Shell Script actions don't exist on iOS.
+
+1. New shortcut **Send to Job-Apply (iOS)**. Settings (ⓘ): **Show in Share
+   Sheet**, Receive → **URLs** and **Safari web pages**.
+2. **Text** containing `Shortcut Input`, then **Base64 Encode** that Text
+   (Mode **Encode**, Line Breaks **None**). Encode the Text, not `Shortcut
+   Input` directly: Base64 Encode takes files, and handed a URL it may download
+   the page and encode that instead.
+3. **Choose from Menu** with the same four items, prompt set to the Text from
+   step 2 so the URL is visible before you pick.
+4. In each branch, **Run Script Over SSH**:
+   - Host: the Mac's Tailscale name (`<mac>.<tailnet>.ts.net`), port 22, your
+     Mac user.
+   - Authentication: **SSH Key**. Tap the key, **Share Public Key**, and append
+     it to `~/.ssh/authorized_keys` on the Mac. Each device makes its own key.
+   - Script, with the **Base64 Encoded** result inserted as a magic variable:
+
+     ```
+     /usr/bin/python3 ~/dev/jobby_search/job-dispatch/dispatch.py --b64 <Base64 Encoded> n n 2>&1; true
+     ```
+
+     **Never insert `Shortcut Input` itself here.** Shortcuts pastes a magic
+     variable into the script as plain text before the Mac's shell parses it,
+     and quotes don't stop that: a shared link like
+     `https://x.invalid/$(touch${IFS}/tmp/pwned)` would run `touch` on the Mac, and
+     a `"` in the text ends the quoted argument. Base64 output is only
+     `A-Z a-z 0-9 + / =`, which the shell passes through as data, and `--b64`
+     decodes it in Python.
+
+     `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
+
+     `2>&1; true` matters: a refused dispatch (no free session, `needs /clear`)
+     exits non-zero with its reason on stderr, and the SSH action would
+     otherwise fail without showing why.
+5. **Show Notification** with the action's output.
+
+To check the recipe, share a note containing
+`https://x.invalid/$(touch${IFS}/tmp/pwned)`: the notification should say the
+dispatch went through (or why not) with that literal URL, and `/tmp/pwned`
+must not exist on the Mac.
+
+The Mac needs **Remote Login** on (System Settings → General → Sharing). SSH
+runs outside the Shortcuts sandbox, so the Mac shortcut's file and socket
+prompts don't apply.
+
+Sharing from the LinkedIn app can hand over a `lnkd.in` short link, which
+detects as source `O`. Share from Safari for the full URL, or add `--source L`
+to that branch.
 
 ## What you see when it runs
 
