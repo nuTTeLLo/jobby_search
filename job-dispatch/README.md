@@ -1,7 +1,8 @@
 # job-dispatch
 
 Send the job posting you're looking at straight into a free `Job-Apply-N` Claude
-session, from the macOS Share menu in any browser.
+session, from the macOS Share menu in any browser, or from the share sheet on an
+iPhone or iPad ([over SSH](#from-iphone-or-ipad)).
 
 Replaces copying the URL out of the browser and hand-typing the 4-line trigger
 message that the workflow in `~/Remotes/OneDrive/My Job Search/CLAUDE.md`
@@ -278,6 +279,83 @@ menu and point the menu's prompt at it:
 Step 3 is what makes it what-you-see-is-what-you-send. Without it the branches
 re-resolve the live tab, so switching tabs between reading the prompt and
 picking an option would dispatch a different URL than the one you just approved.
+
+## From iPhone or iPad
+
+iOS Shortcuts has no Run Shell Script, but it has **Run Script Over SSH**, so a
+phone or iPad shares the job to the Mac over Tailscale and the Mac runs
+`dispatch.py` exactly as before. The Mac stays the runner: it has to be awake,
+with Rex and its Job-Apply panes up, and the device needs Tailscale connected.
+
+```
+Share (Safari / LinkedIn / SEEK app on iOS)
+   └─> Shortcut "Send to Job-Apply (iOS)"
+         └─> Run Script Over SSH ──Tailscale──> Mac: dispatch.py ──> Job-Apply-N
+```
+
+Over SSH the script sees `SSH_CONNECTION` and adjusts by itself:
+
+- **No live-tab lookup** (as `--no-live`). The Mac's frontmost browser has
+  nothing to do with what the phone shared; reading it would send the wrong
+  job, or trip the stale-repeat guard. The iOS share sheet hands over the page
+  actually open, so the share input is trusted.
+- **No Mac notification** (as `--no-notify`). It would appear on the Mac,
+  where nobody is looking. The script's output becomes the phone's
+  notification instead, and failures are prefixed `Job dispatch failed:`.
+- **No stdin fallback.** The URL comes in on the command line, and an SSH
+  channel's stdin may never close, which would hang the dispatch.
+
+`ssh=True` on the `invoked` log line shows a dispatch came this way.
+
+Build it as a separate shortcut. Shortcuts syncs through iCloud, but the Mac
+one's Run Shell Script actions don't exist on iOS.
+
+1. New shortcut **Send to Job-Apply (iOS)**. Settings (ⓘ): **Show in Share
+   Sheet**, Receive → **URLs** and **Safari web pages**.
+2. **Text** containing `Shortcut Input`, then **Base64 Encode** that Text
+   (Mode **Encode**, Line Breaks **None**). Encode the Text, not `Shortcut
+   Input` directly: Base64 Encode takes files, and handed a URL it may download
+   the page and encode that instead.
+3. **Choose from Menu** with the same four items, prompt set to the Text from
+   step 2 so the URL is visible before you pick.
+4. In each branch, **Run Script Over SSH**:
+   - Host: the Mac's Tailscale name (`<mac>.<tailnet>.ts.net`), port 22, your
+     Mac user.
+   - Authentication: **SSH Key**. Tap the key, **Share Public Key**, and append
+     it to `~/.ssh/authorized_keys` on the Mac. Each device makes its own key.
+   - Script, with the **Base64 Encoded** result inserted as a magic variable:
+
+     ```
+     /usr/bin/python3 ~/dev/jobby_search/job-dispatch/dispatch.py --b64 <Base64 Encoded> n n 2>&1; true
+     ```
+
+     **Never insert `Shortcut Input` itself here.** Shortcuts pastes a magic
+     variable into the script as plain text before the Mac's shell parses it,
+     and quotes don't stop that: a shared link like
+     `https://x.invalid/$(touch${IFS}/tmp/pwned)` would run `touch` on the Mac, and
+     a `"` in the text ends the quoted argument. Base64 output is only
+     `A-Z a-z 0-9 + / =`, which the shell passes through as data, and `--b64`
+     decodes it in Python.
+
+     `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
+
+     `2>&1; true` matters: a refused dispatch (no free session, `needs /clear`)
+     exits non-zero with its reason on stderr, and the SSH action would
+     otherwise fail without showing why.
+5. **Show Notification** with the action's output.
+
+To check the recipe, share a note containing
+`https://x.invalid/$(touch${IFS}/tmp/pwned)`: the notification should say the
+dispatch went through (or why not) with that literal URL, and `/tmp/pwned`
+must not exist on the Mac.
+
+The Mac needs **Remote Login** on (System Settings → General → Sharing). SSH
+runs outside the Shortcuts sandbox, so the Mac shortcut's file and socket
+prompts don't apply.
+
+Sharing from the LinkedIn app can hand over a `lnkd.in` short link, which
+detects as source `O`. Share from Safari for the full URL, or add `--source L`
+to that branch.
 
 ## What you see when it runs
 

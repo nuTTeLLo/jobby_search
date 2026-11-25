@@ -13,6 +13,8 @@ profile, so nix/mise interpreters are not reachable from there.
 """
 
 import argparse
+import base64
+import binascii
 import getpass
 import json
 import os
@@ -89,6 +91,17 @@ SOURCE_BY_HOST = (
     ("glassdoor.", "G"),
 )
 VALID_SOURCES = set("LISGMO")
+
+
+def over_ssh():
+    """True when run through SSH, e.g. the iOS Shortcut's Run Script Over SSH.
+
+    The caller is then on another device: the Mac's frontmost browser tab has
+    nothing to do with the URL being sent, and a Mac notification would go
+    unseen. Both are switched off, and the result goes to stdout only, for the
+    calling device to show.
+    """
+    return bool(os.environ.get("SSH_CONNECTION"))
 
 
 class DispatchError(Exception):
@@ -676,6 +689,11 @@ def main():
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--b64", action="store_true",
+        help="the url argument is base64-encoded (iOS Run Script Over SSH, so "
+        "shared text never reaches the remote shell as syntax)",
+    )
+    parser.add_argument(
         "--resolve-only", action="store_true",
         help="print the URL that would be dispatched, then exit (for the menu prompt)",
     )
@@ -697,17 +715,28 @@ def main():
     if not args.backend and preferred and preferred not in BACKENDS:
         parser.error("JOB_DISPATCH_BACKEND=%r is not one of: %s"
                      % (preferred, ", ".join(BACKENDS)))
-    log("invoked", argv=sys.argv[1:])
+    if over_ssh():
+        args.no_live = args.no_notify = True
+    log("invoked", argv=sys.argv[1:], ssh=over_ssh())
 
     raw = args.url
+    if args.b64:
+        try:
+            raw = base64.b64decode((raw or "").strip(), validate=True).decode("utf-8")
+        except (binascii.Error, ValueError) as exc:
+            raise DispatchError("--b64 input is not valid base64 text: %s" % exc)
     if raw is None or not raw.strip():
         # Fall back to stdin, in case the action is set to pass input that way.
-        if not sys.stdin.isatty():
+        # Not over SSH: the iOS action puts the URL in the command line, and
+        # its stdin may never close, which would hang the dispatch.
+        if not sys.stdin.isatty() and not over_ssh():
             raw = sys.stdin.read()
     shared = None
     try:
         shared = extract_url(raw)
     except DispatchError:
+        if args.no_live:
+            raise  # no live browser to recover from, so say what arrived
         shared = None  # may still be recoverable from the live browser
 
     live, front_app = (None, None) if args.no_live else live_url()
@@ -779,8 +808,11 @@ if __name__ == "__main__":
     try:
         main()
     except DispatchError as exc:
-        print(str(exc), file=sys.stderr)
+        # Over SSH the calling device shows the output as its notification,
+        # so say what it is.
+        prefix = "Job dispatch failed: " if over_ssh() else ""
+        print(prefix + str(exc), file=sys.stderr)
         log("failed", reason=str(exc))
-        if "--no-notify" not in sys.argv:
+        if "--no-notify" not in sys.argv and not over_ssh():
             notify("Job dispatch failed", str(exc))
         sys.exit(1)
