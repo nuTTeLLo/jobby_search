@@ -1,5 +1,5 @@
 version: '3.8'
 
 services:
-  # PostgreSQL is now remote (kickapoo.tailee323f.ts.net:30432)
+  # PostgreSQL is remote: set DB_HOST and DB_PORT in backend/.env
   # No local database container needed

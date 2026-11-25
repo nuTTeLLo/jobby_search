@@ -21,3 +21,6 @@ daily-scrape/__pycache__/
 # nix build symlinks
 result
 result-*
+
+# Per-machine mise settings (e.g. DEV_HOST)
+mise.local.toml

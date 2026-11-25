@@ -18,11 +18,11 @@ if [ ! -f "$config" ]; then
     mkdir -p "$(dirname "$config")"
     cat > "$config" <<'EOF'
 # Settings for the fit sweep (scripts/fitsweep in jobby_search). Fill in, no quotes.
-# The account is the one in "My Job Search/.tracker.env".
+# TRACKER_URL is the tracker's base URL; DISCOVERED_URL its /discovered page.
 TRACKER_USER_ID=
 TRACKER_EMAIL=
-TRACKER_URL=https://job-tracker.tailee323f.ts.net
-DISCOVERED_URL=https://job-tracker.tailee323f.ts.net/discovered
+TRACKER_URL=
+DISCOVERED_URL=
 # The 1Password Environment behind backend/.env (holds JWT_SECRET).
 OP_ENVIRONMENT=
 EOF
