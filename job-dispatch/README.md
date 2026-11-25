@@ -327,27 +327,33 @@ Over SSH the script sees `SSH_CONNECTION` and adjusts by itself:
 
 `ssh=True` on the `invoked` log line shows a dispatch came this way.
 
-Build it as a separate shortcut. Shortcuts syncs through iCloud, but the Mac
-one's Run Shell Script actions don't exist on iOS.
+Build it as a separate shortcut, **on the Mac**. Shortcuts syncs it to the
+phone and iPad through iCloud, share-sheet setting included. Build it there
+because the iOS app's **+** now opens the Apple Intelligence composer rather
+than a blank editor, and because the Mac shortcut is the quickest starting point.
+**Run Script Over SSH** exists on macOS too.
 
-1. New shortcut **Send to Job-Apply (iOS)**. Settings (ⓘ): **Show in Share
-   Sheet**, Receive → **URLs** and **Safari web pages**.
-2. **Text** containing `Shortcut Input`, then **Base64 Encode** that Text
-   (Mode **Encode**, Line Breaks **None**). Encode the Text, not `Shortcut
-   Input` directly: Base64 Encode takes files, and handed a URL it may download
-   the page and encode that instead.
-3. **Choose from Menu** with the same four items, prompt set to the Text from
-   step 2 so the URL is visible before you pick.
-4. In each branch, **Run Script Over SSH**:
+1. In Shortcuts on the Mac, right-click **Send to Job-Apply** → **Duplicate**,
+   and rename the copy **Send to Job-Apply (iOS)**.
+2. Delete the first **Run Shell Script** (the `--resolve-only` one) and the
+   second **Text** + **Base64 Encode** pair after it. The phone shares the page
+   actually open, so there is no stale URL to catch. Keep the first pair:
+   **Text** containing `Shortcut Input`, then **Base64 Encode** that Text (Mode
+   **Encode**, Line Breaks **None**).
+3. In **Choose from Menu**, point the prompt at that first **Text**, so the URL
+   is visible before you pick.
+4. In each branch, replace the Run Shell Script with **Run Script Over SSH**:
    - Host: the Mac's Tailscale name (`<mac>.<tailnet>.ts.net`), port 22, your
      Mac user.
-   - Authentication: **SSH Key**. Tap the key, **Share Public Key**, and append
-     it to `~/.ssh/authorized_keys` on the Mac. Each device makes its own key.
-   - Script, with the **Base64 Encoded** result inserted as a magic variable:
+   - Authentication: **SSH Key** (see [SSH keys](#ssh-keys-one-per-device)).
+   - Script, with the first **Base64 Encoded** inserted as a magic variable,
+     unquoted:
 
      ```
      /usr/bin/python3 ~/dev/jobby_search/job-dispatch/dispatch.py --b64 <Base64 Encoded> n n 2>&1; true
      ```
+
+     `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
 
      **Never insert `Shortcut Input` itself here.** Shortcuts pastes a magic
      variable into the script as plain text before the Mac's shell parses it,
@@ -357,12 +363,44 @@ one's Run Shell Script actions don't exist on iOS.
      `A-Z a-z 0-9 + / =`, which the shell passes through as data, and `--b64`
      decodes it in Python.
 
-     `Via recruiter` → `y n` · `Easy apply` → `n y` · `Recruiter + Easy apply` → `y y`
-
      `2>&1; true` matters: a refused dispatch (no free session, `needs /clear`)
      exits non-zero with its reason on stderr, and the SSH action would
      otherwise fail without showing why.
-5. **Show Notification** with the action's output.
+5. **Show Notification** with the SSH action's output (one per branch if a
+   single one can't reach every branch's output).
+6. In ⓘ, check the shortcut receives **URLs** and **Safari web pages** from the
+   **Share Sheet**.
+
+Line Breaks **None** is required on every Base64 Encode. The other settings
+wrap the output every 64 or 76 characters, most job URLs encode longer than
+that, and the shell would treat the line break as the end of the command.
+
+### SSH keys: one per device
+
+**The SSH key is per device.** Each Mac, iPhone and iPad generates its own key
+the first time the action uses SSH Key authentication, and it does not sync
+through iCloud with the shortcut. Every device that runs the shortcut needs its
+public key in `~/.ssh/authorized_keys` on the Mac. A device whose key is
+missing fails with an authentication error, even though the same shortcut works
+elsewhere.
+
+For each device, on that device:
+
+1. Open the shortcut, and in any **Run Script Over SSH** action tap the key row
+   under Authentication (usually "ed25519 Key").
+2. **Share Public Key** → **Copy** on the Mac, or AirDrop / Notes from a phone
+   or iPad to get it onto the Mac.
+3. On the Mac, with the key on the clipboard:
+
+   ```
+   { pbpaste; echo; } >> ~/.ssh/authorized_keys
+   ```
+
+   The `echo` keeps each key on its own line.
+
+All the branches on one device use the same key. Running the shortcut on the
+Mac SSHes into the Mac itself, which is the quickest test of the recipe; it
+says nothing about whether the phone's key has been added.
 
 To check the recipe, share a note containing
 `https://x.invalid/$(touch${IFS}/tmp/pwned)`: the notification should say the
